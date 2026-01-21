@@ -206,7 +206,7 @@ const handleForgotPassword = async () => {
               <v-divider ></v-divider>
 
               <p class="text-center " >
-                Don't have an account? <a href="/adminregister" style=" text-decoration: underline; cursor: pointer;">Sign up</a>
+                Don't have an account? <router-link to="/adminregister" style=" text-decoration: underline; cursor: pointer;">Sign up</router-link>
               </p>
              
             </v-card>
