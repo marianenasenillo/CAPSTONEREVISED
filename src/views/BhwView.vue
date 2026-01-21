@@ -6,7 +6,7 @@ import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
 
-// state
+// states
 const bhwList = ref([])
 const selectedBhw = ref(null)
 const currentUser = ref(null)
