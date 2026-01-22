@@ -46,7 +46,6 @@ const fetchDewormingStats = async () => {
     const { data: dewormingData } = await supabase
       .from('deworming_records')
       .select('*')
-      .eq('barangay', selectedBarangay.value)
 
     if (dewormingData) {
       stats.value.dewormingStats.totalDewormed = dewormingData.length
@@ -71,7 +70,6 @@ const fetchVitaminAStats = async () => {
     const { data: vitaminAData } = await supabase
       .from('childcare_vitamina_records')
       .select('*')
-      .eq('barangay', selectedBarangay.value)
 
     if (vitaminAData) {
       stats.value.vitaminAStats.totalSupplemented = vitaminAData.length
