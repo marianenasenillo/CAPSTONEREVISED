@@ -92,25 +92,26 @@ onMounted(async () => {
 const fetchGenderDistribution = async () => {
   try {
     const { data, error } = await supabase
-      .from('household_members')
-      .select('sex')
+      .from('household_heads')
+      .select('male_count, female_count')
       .eq('barangay', selectedBarangay.value)
-      .not('sex', 'is', null)
+      .not('male_count', 'is', null)
+      .not('female_count', 'is', null)
 
     if (error) throw error
 
-    const genderCount = { Male: 0, Female: 0 }
+    let totalMale = 0
+    let totalFemale = 0
     data.forEach(item => {
-      if (genderCount[item.sex] !== undefined) {
-        genderCount[item.sex]++
-      }
+      totalMale += item.male_count || 0
+      totalFemale += item.female_count || 0
     })
 
     genderChartData.value = {
-      labels: Object.keys(genderCount),
+      labels: ['Male', 'Female'],
       datasets: [{
         label: 'Gender Distribution',
-        data: Object.values(genderCount),
+        data: [totalMale, totalFemale],
         backgroundColor: [
           'rgba(255, 99, 132, 0.6)',
           'rgba(54, 162, 235, 0.6)'
