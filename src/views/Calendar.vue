@@ -6,7 +6,7 @@ import { supabase } from '@/utils/supabase'
 
 const monthRef = ref(null)
 const startDate = ref("2026-10-01")
-const currentMonth = ref(10) // October
+const currentMonth = ref(1) 
 const currentYear = ref(2026)
 const events = ref([])
 const showEventModal = ref(false)
