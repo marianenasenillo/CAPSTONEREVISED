@@ -124,7 +124,6 @@ const fetchToolStats = async () => {
           name
         )
       `)
-      .eq('barangay', selectedBarangay.value)
 
     if (toolsData) {
       stats.value.toolStats.totalTools = toolsData.reduce((sum, record) => sum + record.quantity, 0)
