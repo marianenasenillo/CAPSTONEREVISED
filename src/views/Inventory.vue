@@ -23,7 +23,7 @@ const selectedTool = ref(null)
 
 // Modal state for availing medicine
 const showAvailMedicineModal = ref(false)
-const availMedicineForm = ref({ name: '', purok: '', quantity: 1, expectedtoreturn: '' })
+const availMedicineForm = ref({ name: '', purok: '', quantity: 1, expiration: '' })
 const selectedMedicine = ref(null)
 
 // Computed: only show tools with quantity > 0
@@ -46,7 +46,7 @@ const availTool = (tool) => {
 // Avail a medicine (open modal)
 const availMedicine = (med) => {
   selectedMedicine.value = med
-  availMedicineForm.value = { name: '', purok: '', quantity: 1, expectedtoreturn: '' }
+  availMedicineForm.value = { name: '', purok: '', quantity: 1, expiration: '' }
   showAvailMedicineModal.value = true
 }
 
@@ -99,7 +99,7 @@ const confirmAvailMedicine = async () => {
     // selectedMedicine is expected to come from DB and include medicine_id
     if (!selectedMedicine.value?.medicine_id) throw new Error('Medicine not recognized')
     // convert date input to ISO timestamp if provided
-    let expected = availMedicineForm.value.expectedtoreturn
+    let expected = availMedicineForm.value.expiration
     if (expected) expected = new Date(expected).toISOString()
 
     await medicineApi.availMedicine({
@@ -107,7 +107,7 @@ const confirmAvailMedicine = async () => {
       name: availMedicineForm.value.name,
       purok: availMedicineForm.value.purok,
       quantity: availMedicineForm.value.quantity,
-      expectedtoreturn: expected,
+      expiration: expected,
     })
 
     // refresh list from DB
@@ -150,10 +150,10 @@ const confirmAddTool = async () => {
 
 // Add medicine modal
 const showAddMedicineModal = ref(false)
-const addMedicineForm = ref({ name: '', quantity: 1 })
+const addMedicineForm = ref({ name: '', quantity: 1, expiration: '' })
 
 const openAddMedicineModal = () => {
-  addMedicineForm.value = { name: '', quantity: 1 }
+  addMedicineForm.value = { name: '', quantity: 1, expiration: '' }
   showAddMedicineModal.value = true
 }
 
@@ -164,7 +164,11 @@ const confirmAddMedicine = async () => {
   }
 
   try {
-    const created = await medicineApi.createMedicine({ name: addMedicineForm.value.name, quantity: addMedicineForm.value.quantity })
+    const created = await medicineApi.createMedicine({ 
+      name: addMedicineForm.value.name, 
+      quantity: addMedicineForm.value.quantity,
+      expiration: addMedicineForm.value.expiration ? new Date(addMedicineForm.value.expiration).toISOString() : null
+    })
     // refresh list
     medicine.value = await medicineApi.listMedicine()
     showAddMedicineModal.value = false
@@ -268,10 +272,10 @@ onMounted(async () => {
             Quantity:
             <input v-model.number="availForm.quantity" type="number" min="1" :max="selectedTool?.quantity" />
           </label>
-          <label>
+          <!--<label>
             Expected to Return:
             <input v-model="availForm.expectedtoreturn" type="date" />
-          </label>
+          </label>-->
           <div class="modal-actions">
             <button @click="confirmAvail">Confirm</button>
             <button @click="showAvailModal = false">Cancel</button>
@@ -304,6 +308,7 @@ onMounted(async () => {
         <div class="modal-content">
           <button class="modal-close" @click="showAvailMedicineModal = false" v-if="showAvailMedicineModal">&times;</button>
           <h3>Avail Medicine: {{ selectedMedicine?.name }}</h3>
+          <p>Expiration Date: {{ selectedMedicine?.expiration ? new Date(selectedMedicine.expiration).toLocaleDateString() : 'N/A' }}</p>
           <label>
             Name:
             <input v-model="availMedicineForm.name" placeholder="Your Name" />
@@ -316,10 +321,10 @@ onMounted(async () => {
             Quantity:
             <input v-model.number="availMedicineForm.quantity" type="number" min="1" :max="selectedMedicine?.quantity" />
           </label>
-          <label>
-            Expected to Return:
-            <input v-model="availMedicineForm.expectedtoreturn" type="date" />
-          </label>
+          <!--<label>
+            Expiration:
+            <input v-model="availMedicineForm.expiration" type="date" />
+          </label>-->
           <div class="modal-actions">
             <button @click="confirmAvailMedicine">Confirm</button>
             <button @click="showAvailMedicineModal = false">Cancel</button>
@@ -339,6 +344,10 @@ onMounted(async () => {
           <label>
             Quantity:
             <input v-model.number="addMedicineForm.quantity" type="number" min="1" placeholder="Quantity" />
+          </label>
+          <label>
+            Expiration Date:
+            <input v-model="addMedicineForm.expiration" type="date" />
           </label>
           <div class="modal-actions">
             <button @click="confirmAddMedicine">Confirm</button>

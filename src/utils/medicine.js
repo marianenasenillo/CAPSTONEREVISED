@@ -28,11 +28,11 @@ export async function getMedicine(medicine_id) {
   return data
 }
 
-export async function createMedicine({ name, quantity = 0 }) {
+export async function createMedicine({ name, quantity = 0, expiration = null }) {
   if (!name) throw new Error('name is required')
   if (quantity == null || Number(quantity) < 0) throw new Error('quantity must be >= 0')
 
-  const { data, error } = await supabase.from('medicine').insert({ name, quantity }).select().single()
+  const { data, error } = await supabase.from('medicine').insert({ name, quantity, expiration }).select().single()
   if (error) throw error
   return data
 }
