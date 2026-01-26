@@ -280,7 +280,7 @@ const handleRegister = async () => {
                   block
                   class="text-white text-lowercase font-weight-bold"
                   style="background-color: #466a17"
-                  @click="router.push('/dashboard')"
+                  @click="router.push('/')"
                 >
                   back
                 </v-btn>
