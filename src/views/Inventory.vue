@@ -18,7 +18,7 @@ const userRole = ref(null)
 
 // Modal state for availing tool
 const showAvailModal = ref(false)
-const availForm = ref({ name: '', purok: '', quantity: 1, expectedtoreturn: '' })
+const availForm = ref({ name: '', purok: '', quantity: 1, daystoreturn: '' })
 const selectedTool = ref(null)
 
 // Modal state for availing medicine
@@ -39,7 +39,7 @@ const availableMedicine = computed(() =>
 // Avail a tool (open modal)
 const availTool = (tool) => {
   selectedTool.value = tool
-  availForm.value = { name: '', purok: '', quantity: 1, expectedtoreturn: '' }
+  availForm.value = { name: '', purok: '', quantity: 1, daystoreturn: '' }
   showAvailModal.value = true
 }
 
@@ -64,7 +64,7 @@ const confirmAvail = async () => {
     if (!selectedTool.value?.tool_id) throw new Error('Tool not recognized')
 
     // convert date input to ISO timestamp if provided
-    let expected = availForm.value.expectedtoreturn
+    let expected = availForm.value.daystoreturn
     if (expected) {
       expected = new Date(expected).toISOString()
     }
@@ -74,7 +74,7 @@ const confirmAvail = async () => {
       name: availForm.value.name,
       purok: availForm.value.purok,
       quantity: availForm.value.quantity,
-      expectedtoreturn: expected,
+      daystoreturn: expected,
     })
 
     // refresh list from DB
@@ -272,10 +272,10 @@ onMounted(async () => {
             Quantity:
             <input v-model.number="availForm.quantity" type="number" min="1" :max="selectedTool?.quantity" />
           </label>
-          <!--<label>
-            Expected to Return:
-            <input v-model="availForm.expectedtoreturn" type="date" />
-          </label>-->
+          <label>
+            No. of Days barrow:
+            <input v-model="availForm.daystoreturn" type="date" />
+          </label>
           <div class="modal-actions">
             <button @click="confirmAvail">Confirm</button>
             <button @click="showAvailModal = false">Cancel</button>
