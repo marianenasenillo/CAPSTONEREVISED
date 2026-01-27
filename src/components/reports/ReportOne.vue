@@ -162,15 +162,15 @@ const fetchHouseholdStats = async () => {
       stats.value.householdStats.totalPopulation = totalPopulation
 
       // Calculate average household size
-      stats.value.householdStats.avgHouseholdSize = Number((totalPopulation / householdHeads.length).toFixed(1))
+      stats.value.householdStats.avgHouseholdSize = householdHeads.length > 0 ? Number((totalPopulation / householdHeads.length).toFixed(1)) : 0
 
       // Calculate gender distribution
       const maleCount = householdHeads.reduce((sum, head) => sum + (head.male_count || 0), 0)
       const femaleCount = householdHeads.reduce((sum, head) => sum + (head.female_count || 0), 0)
       const totalCount = maleCount + femaleCount
       stats.value.householdStats.genderDistribution = {
-        male: Math.round((maleCount / totalCount) * 100),
-        female: Math.round((femaleCount / totalCount) * 100)
+        male: totalCount > 0 ? Math.round((maleCount / totalCount) * 100) : 0,
+        female: totalCount > 0 ? Math.round((femaleCount / totalCount) * 100) : 0
       }
 
       // Calculate purok distribution
