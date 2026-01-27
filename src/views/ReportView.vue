@@ -32,6 +32,14 @@ const exportPdf = async () => {
   element.style.overflow = 'visible'
   element.style.maxHeight = 'none'
 
+  // Temporarily hide elements that should not be in PDF
+  const excludeElements = element.querySelectorAll('.exclude-from-pdf')
+  const originalDisplays = []
+  excludeElements.forEach(el => {
+    originalDisplays.push(el.style.display)
+    el.style.display = 'none'
+  })
+
   // Temporarily reduce logo sizes for PDF export
   const logos = element.querySelectorAll('img[alt="Province Logo"], img[alt="Barangay Logo"]')
   const originalSizes = []
@@ -57,6 +65,11 @@ const exportPdf = async () => {
       img.style.right = originalMargins[index] || ''
       img.style.position = ''
     }
+  })
+
+  // Restore excluded elements
+  excludeElements.forEach((el, index) => {
+    el.style.display = originalDisplays[index]
   })
 
   // A4 size in mm

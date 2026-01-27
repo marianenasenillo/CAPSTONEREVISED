@@ -224,7 +224,7 @@ const generateDiscussion = () => {
   <section v-html="discussionText"></section>
               
               <div class="d-flex justify-content-between mt-4">
-               <button class="btn btn-secondary" @click="$emit('prev')">&larr; Back</button>
+               <button class="btn btn-secondary exclude-from-pdf" @click="$emit('prev')">&larr; Back</button>
               </div>
             </template>
 

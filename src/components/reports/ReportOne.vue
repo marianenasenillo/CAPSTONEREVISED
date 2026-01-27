@@ -342,7 +342,7 @@ onMounted(() => {
     </section>
 
     <div class="d-flex justify-content-end mt-4">
-      <button class="btn btn-primary" @click="$emit('next')">Next &rarr;</button>
+      <button class="btn btn-primary exclude-from-pdf" @click="$emit('next')">Next &rarr;</button>
     </div>
   </div>
 </template>
