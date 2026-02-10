@@ -314,7 +314,7 @@ const saveHousehold = async () => {
             </button>
             <div v-if="activeMenu === 'head'" class="dropdown-menu">
               <button  @click="fillIn('head')">Fill In</button>
-              <button @click="viewRecords('head')">View Records</button>
+              <button v-if="userRole === 'BHW'" @click="viewRecords('head')">View Records</button>
             </div>
           </div>
         </div>
