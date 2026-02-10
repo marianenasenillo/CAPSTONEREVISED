@@ -446,8 +446,8 @@ const exportreportPdf = async () => {
 
         <!-- Modal for Members -->
         <div class="modal fade show d-block" tabindex="-1" v-if="showMembersModal" style="background: rgba(0,0,0,0.6)">
-          <div class="modal-dialog modal-xl" style="max-width: 90vw; top: 100px;">
-            <div class="modal-content" style="max-width: 90vw;">
+          <div class="modal-dialog modal-xl" style="max-width: 95vw; top: 100px;">
+            <div class="modal-content" style="max-width: 95vw;">
               <div class="modal-header">
                 <h5 class="modal-title">Members of: {{ selectedHead.firstname }} {{ selectedHead.lastname }}</h5>
                 <button type="button" class="btn-close" @click="showMembersModal = false"></button>
@@ -458,7 +458,7 @@ const exportreportPdf = async () => {
                 </div>
 
                 <div v-else class="table-responsive">
-                  <table class="table table-bordered mb-0">
+                  <table class="table table-bordered table-sm mb-0">
                     <thead class="table-light">
                       <tr>
                         <th>Last Name</th>
@@ -472,10 +472,14 @@ const exportreportPdf = async () => {
                         <th>Education</th>
                         <th>Religion</th>
                         <th>Ethnicity</th>
+                        <th>PhilHealth ID</th>
+                        <th>4PS Member</th>
+                        <th>FP Method</th>
+                        <th>Medical History</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="m in members" :key="m.id">
+                      <tr v-for="m in members" :key="m.member_id">
                         <td>{{ m.lastname }}</td>
                         <td>{{ m.firstname }}</td>
                         <td>{{ m.middlename }}</td>
@@ -487,6 +491,10 @@ const exportreportPdf = async () => {
                         <td>{{ m.education }}</td>
                         <td>{{ m.religion }}</td>
                         <td>{{ m.ethnicity }}</td>
+                        <td>{{ m.philhealth_id || '-' }}</td>
+                        <td>{{ m.is_4ps_member ? 'Yes' : 'No' }}</td>
+                        <td>{{ m.fp_method_used || '-' }}</td>
+                        <td>{{ m.medical_history || '-' }}</td>
                       </tr>
                     </tbody>
                   </table>
