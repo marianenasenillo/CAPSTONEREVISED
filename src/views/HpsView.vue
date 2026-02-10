@@ -313,8 +313,8 @@ const saveHousehold = async () => {
               Household Head Profiling <span>⋮</span>
             </button>
             <div v-if="activeMenu === 'head'" class="dropdown-menu">
-              <button  @click="fillIn('head')">Fill In</button>
-              <button v-if="userRole === 'BHW'" @click="viewRecords('head')">View Records</button>
+              <button v-if="userRole === 'BHW'" @click="fillIn('head')">Fill In</button>
+              <button  @click="viewRecords('head')">View Records</button>
             </div>
           </div>
         </div>
