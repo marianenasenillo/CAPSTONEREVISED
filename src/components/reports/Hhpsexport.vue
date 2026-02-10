@@ -77,9 +77,12 @@ const chartOptions = {
 // Computed explanations
 const headsExplanation = computed(() => {
   const totalHeads = headRecords.value.length
-  const puroks = Object.keys(headsChartData.value.labels)
-  const maxPurok = puroks.reduce((max, purok) => 
-    headsChartData.value.datasets[0].data[puroks.indexOf(purok)] > headsChartData.value.datasets[0].data[puroks.indexOf(max)] ? purok : max, puroks[0])
+  const labels = headsChartData.value.labels
+  const data = headsChartData.value.datasets[0].data
+  
+  // Find the index of the maximum value
+  const maxIndex = data.indexOf(Math.max(...data))
+  const maxPurok = labels[maxIndex]
   
   return `This bar chart shows the distribution of ${totalHeads} household heads across different puroks in your barangay. The purok with the highest number of household heads is ${maxPurok}, indicating the most densely populated area.`
 })
