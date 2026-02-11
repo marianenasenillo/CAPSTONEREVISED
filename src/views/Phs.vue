@@ -22,7 +22,7 @@ const age = ref('')
 const lastname = ref('')
 const purok = ref('')
 
-// Deworming records table
+// Deworming records 
 const dewormingRecords = ref([])
 
 const goPrevPage = () => {
