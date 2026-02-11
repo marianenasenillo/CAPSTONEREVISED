@@ -15,7 +15,7 @@ const userBarangay = ref('')
 
 // Navigation
 const goPrevPage = () => router.push('/maternalservices')
-const goNextPage = () => router.push('/familyplanning')
+const goNextPage = () => router.push('/preventivehealhservices')
 const toggleRecords = () => showRecords.value = !showRecords.value
 const openMenu = (type) => activeMenu.value = type
 const closeMenu = () => activeMenu.value = ''

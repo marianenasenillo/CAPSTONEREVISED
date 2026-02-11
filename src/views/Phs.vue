@@ -26,7 +26,7 @@ const purok = ref('')
 const dewormingRecords = ref([])
 
 const goPrevPage = () => {
-  router.push('/familyplanning')
+  router.push('/childcare')
 }
 const toggleRecords = () => {
   showRecords.value = !showRecords.value
