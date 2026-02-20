@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '@/utils/supabase'
+import { useToast } from '@/composables/useToast'
 import { Bar, Pie } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -13,6 +14,7 @@ import {
   ArcElement
 } from 'chart.js'
 
+const toast = useToast()
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, ArcElement)
 
 const loading = ref(true)
@@ -24,7 +26,6 @@ const showMembersModal = ref(false)
 const members = ref([])
 const userBarangay = ref('')
 
-// Chart data for heads (bar chart by purok)
 const headsChartData = computed(() => {
   const purokCounts = {}
   headRecords.value.forEach(head => {
@@ -43,7 +44,6 @@ const headsChartData = computed(() => {
   }
 })
 
-// Chart data for members (pie chart by sex)
 const membersChartData = computed(() => {
   const sexCounts = { Male: 0, Female: 0 }
   membersData.value.forEach(member => {
@@ -74,16 +74,14 @@ const chartOptions = {
   maintainAspectRatio: false
 }
 
-// Computed explanations
 const headsExplanation = computed(() => {
   const totalHeads = headRecords.value.length
   const labels = headsChartData.value.labels
   const data = headsChartData.value.datasets[0].data
-  
-  // Find the index of the maximum value
+
   const maxIndex = data.indexOf(Math.max(...data))
   const maxPurok = labels[maxIndex]
-  
+
   return `This bar chart shows the distribution of ${totalHeads} household heads across different puroks in your barangay. The purok with the highest number of household heads is ${maxPurok}, indicating the most densely populated area.`
 })
 
@@ -93,7 +91,7 @@ const membersExplanation = computed(() => {
   const femaleCount = membersChartData.value.datasets[0].data[1] || 0
   const malePercentage = totalMembers > 0 ? ((maleCount / totalMembers) * 100).toFixed(1) : 0
   const femalePercentage = totalMembers > 0 ? ((femaleCount / totalMembers) * 100).toFixed(1) : 0
-  
+
   return `This pie chart illustrates the gender distribution among ${totalMembers} household members. There are ${maleCount} males (${malePercentage}%) and ${femaleCount} females (${femalePercentage}%) in the recorded households.`
 })
 
@@ -101,14 +99,13 @@ const fetchHeadRecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')
 
     const userBarangayValue = user.user_metadata?.barangay
     if (!userBarangayValue) throw new Error('No barangay assigned')
-    
+
     userBarangay.value = userBarangayValue
 
     const { data, error: err } = await supabase
@@ -121,7 +118,6 @@ const fetchHeadRecords = async () => {
     if (err) throw err
     headRecords.value = data
 
-    // Fetch all members for the heads
     const { data: allMembers, error: membersError } = await supabase
       .from('household_members')
       .select('*')
@@ -138,7 +134,6 @@ const fetchHeadRecords = async () => {
   }
 }
 
-// View Members
 const viewMembers = async (head) => {
   selectedHead.value = head
   showMembersModal.value = true
@@ -153,7 +148,7 @@ const viewMembers = async (head) => {
     members.value = data
   } catch (e) {
     console.error(e)
-    alert('Error loading household members.')
+    toast.error('Error loading household members.')
   }
 }
 
@@ -256,6 +251,5 @@ onMounted(async () => {
       </div>
     </section>
 
-    
   </div>
 </template>

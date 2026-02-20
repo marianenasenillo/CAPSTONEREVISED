@@ -1,7 +1,8 @@
 <script setup>
 import DashboardView from '@/components/DashboardView.vue'
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { usePagination } from '@/composables/usePagination'
 import { supabase } from '@/utils/supabase.js'
 
 const router = useRouter()
@@ -11,23 +12,31 @@ const loading = ref(true)
 const error = ref(null)
 const familyPlanningRecords = ref([])
 const searchQuery = ref('')
+const selectedPurok = ref('')
 
 onMounted(async () => {
   await fetchFamilyPlanningRecords()
 })
 
 const filteredRecords = computed(() => {
-  const q = String(searchQuery.value || '').trim()
-  if (!q) return familyPlanningRecords.value
-  return familyPlanningRecords.value.filter(r =>
-    String(r.surname).toLowerCase().includes(q.toLowerCase()) ||
-    String(r.firstname).toLowerCase().includes(q.toLowerCase())
-  )
+  let data = familyPlanningRecords.value
+  const q = String(searchQuery.value || '').trim().toLowerCase()
+  if (q) {
+    data = data.filter(r =>
+      String(r.surname).toLowerCase().includes(q) ||
+      String(r.firstname).toLowerCase().includes(q)
+    )
+  }
+  if (selectedPurok.value) {
+    data = data.filter(r => r.purok === selectedPurok.value)
+  }
+  return data
 })
 
+const { currentPage, itemsPerPage, itemsPerPageOptions, totalItems, totalPages, paginatedData, startIndex, endIndex, visiblePages, goToPage, nextPage, prevPage, firstPage, lastPage, resetPage } = usePagination(filteredRecords)
+watch([searchQuery, selectedPurok], () => resetPage())
+
 const handleSearch = () => {
-  // computed `filteredRecords` will react to `searchQuery`; keep placeholder for possible analytics or focus behavior
-  // we can also scroll table to top when searching
   const el = document.querySelector('.table-responsive.large-table')
   if (el) el.scrollTop = 0
 }
@@ -36,7 +45,6 @@ const fetchFamilyPlanningRecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')
@@ -60,7 +68,6 @@ const fetchFamilyPlanningRecords = async () => {
   }
 }
 
-// Delete Record
 const deleteRecord = async (record) => {
   if (!confirm(`Are you sure you want to delete the family planning record for "${record.firstname} ${record.surname}"? This action cannot be undone.`)) {
     return
@@ -82,7 +89,6 @@ const deleteRecord = async (record) => {
   }
 }
 
-// Restore Record
 const restoreRecord = async (record) => {
   if (!confirm(`Are you sure you want to restore the family planning record for "${record.firstname} ${record.surname}"?`)) {
     return
@@ -110,103 +116,93 @@ const restoreRecord = async (record) => {
 
 <template>
   <DashboardView>
-    <div class="family-bg">
-      <div class="container">
-        <div class="records-top d-flex align-items-center mb-2">
-          <button class="btn btn-outline-secondary me-3" @click="goBack">← Back</button>
-          <h3 class="mb-0">Archived Responsible Parenthood and Planning Records</h3>
-          <div class="ms-auto search-box">
-            <div class="input-group">
-              <input v-model="searchQuery" @keyup.enter="handleSearch" type="search" class="form-control search-input" placeholder="Search by Surname or First Name..." aria-label="Search by Surname or First Name">
-              <button class="btn btn-primary search-btn" @click="handleSearch">Search</button>
+    <div class="service-page">
+      <div class="hs-page-header">
+        <div class="hs-breadcrumb">
+          <a href="#" @click.prevent="goBack">Records</a>
+          <span class="separator">/</span>
+          <span class="current">Archived</span>
+        </div>
+        <h1>Responsible Parenthood and Planning - Archived</h1>
+      </div>
+
+      <div class="hs-toolbar">
+        <div class="hs-toolbar-left">
+          <button class="hs-btn hs-btn-secondary" @click="goBack"><span class="mdi mdi-arrow-left"></span> Back</button>
+          <select v-model="selectedPurok" class="hs-select" style="width:auto;">
+            <option value="">All Puroks</option>
+            <option value="Purok 1">Purok 1</option>
+            <option value="Purok 2">Purok 2</option>
+            <option value="Purok 3">Purok 3</option>
+            <option value="Purok 4">Purok 4</option>
+          </select>
+        </div>
+        <div class="hs-toolbar-right">
+          <div class="hs-search-box">
+              <span class="mdi mdi-magnify"></span>
+              <input v-model="searchQuery" type="search" placeholder="Search..." />
             </div>
+        </div>
+      </div>
+
+      <div v-if="loading" class="hs-empty-state"><div class="hs-spinner"></div><p>Loading...</p></div>
+      <div v-else-if="error" class="hs-card" style="border-left:4px solid var(--hs-danger);padding:16px;color:var(--hs-danger);">{{ error }}</div>
+      <div v-else class="hs-card" style="padding:0;overflow:hidden;">
+        <div style="overflow-x:auto;max-height:calc(100vh - 320px);">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>Purok</th>
+                <th>Surname</th>
+                <th>First Name</th>
+                <th>Name of Mother</th>
+                <th>Sex</th>
+                <th>Birthday</th>
+                <th>Age in years</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in paginatedData" :key="record.id">
+                <td>{{ record.purok }}</td>
+                <td>{{ record.surname }}</td>
+                <td>{{ record.firstname }}</td>
+                <td>{{ record.mother_name }}</td>
+                <td>{{ record.sex }}</td>
+                <td>{{ record.birthday }}</td>
+                <td>{{ record.age }}</td>
+                <td>
+                  <button class="hs-btn hs-btn-primary" style="padding:var(--hs-space-1) var(--hs-space-3);font-size:var(--hs-font-size-base);" @click="restoreRecord(record)"><span class="mdi mdi-restore"></span> Restore</button>
+                  <button class="hs-btn hs-btn-danger" style="padding:var(--hs-space-1) var(--hs-space-3);font-size:var(--hs-font-size-base);" @click="deleteRecord(record)"><span class="mdi mdi-delete"></span> Delete</button>
+                </td>
+              </tr>
+              <tr v-if="paginatedData.length === 0">
+                <td colspan="8" style="text-align:center;padding:32px;color:var(--hs-gray-400);">No archived records found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="hs-pagination">
+          <div class="hs-pagination-info">
+            <span>Show</span>
+            <select v-model.number="itemsPerPage">
+              <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+            <span>entries &mdash; {{ startIndex }}-{{ endIndex }} of {{ totalItems }}</span>
+          </div>
+          <div class="hs-pagination-controls">
+            <button @click="firstPage" :disabled="currentPage === 1"><span class="mdi mdi-chevron-double-left"></span></button>
+            <button @click="prevPage" :disabled="currentPage === 1"><span class="mdi mdi-chevron-left"></span></button>
+            <button v-for="p in visiblePages" :key="p" :class="{ active: p === currentPage }" @click="goToPage(p)">{{ p }}</button>
+            <button @click="nextPage" :disabled="currentPage === totalPages"><span class="mdi mdi-chevron-right"></span></button>
+            <button @click="lastPage" :disabled="currentPage === totalPages"><span class="mdi mdi-chevron-double-right"></span></button>
           </div>
         </div>
-
-        <div v-if="loading" class="text-center my-4">
-          <div class="spinner-border text-primary" role="status"></div>
-          <p>Loading records...</p>
-        </div>
-
-        <div v-else-if="error" class="alert alert-danger">
-          {{ error }}
-        </div>
-
-        <div v-else>
-          <div class="table-wrapper">
-            <div class="table-responsive large-table">
-              <table class="table table-bordered table-striped mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th>Purok</th>
-                    <th>Surname</th>
-                    <th>First Name</th>
-                    <th>Name of Mother</th>
-                    <th>Sex</th>
-                    <th>Birthday</th>
-                    <th>Age in years</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="record in filteredRecords" :key="record.id">
-                    <td>{{ record.purok }}</td>
-                    <td>{{ record.surname }}</td>
-                    <td>{{ record.firstname }}</td>
-                    <td>{{ record.mother_name }}</td>
-                    <td>{{ record.sex }}</td>
-                    <td>{{ record.birthday }}</td>
-                    <td>{{ record.age }}</td>
-                    <td>
-                      <button class="btn btn-success btn-sm" @click="restoreRecord(record)">Restore</button>
-                    </td>
-                  </tr>
-
-                  <tr v-if="filteredRecords.length === 0">
-                    <td colspan="8" class="text-center">No records found.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
   </DashboardView>
 </template>
 
 <style scoped>
-.family-bg {
-  background: url('/images/familyplanning-bg.jpg') no-repeat center center;
-  background-size: cover;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.modal {
-  overflow-y: auto;
-}
-
-.records-top { align-items: center }
-.search-box { max-width: 540px }
-.search-input { border-radius: 28px 0 0 28px }
-.search-btn { border-radius: 0 28px 28px 0 }
-.table-wrapper { border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.95); }
-/* Make the table-wrapper take the remaining vertical space and keep internal scrolling in the table only */
-.table-wrapper { height: calc(100vh - 260px); display: flex; flex-direction: column; }
-.table-responsive.large-table { flex: 1 1 auto; height: 100%; overflow: auto; }
-.large-table table { font-size: 1.05rem; margin-bottom: 0 }
-.large-table thead th { padding: 1rem; font-size: 1rem; position: sticky; top: 0; background: #fff; z-index: 5 }
-.large-table tbody td { padding: 0.9rem }
-
-@media (max-width: 768px) {
-  .search-box { max-width: 100% }
-  .large-table thead th { font-size: 0.95rem }
-}
+.service-page { max-width: var(--hs-content-max-width); }
 </style>

@@ -1,20 +1,6 @@
 import { supabase } from './supabase'
 
-/**
- * Medicine helper for interacting with `medicine` and `availed_medicine` tables.
- *
- * Exports:
- * - listMedicine()
- * - createMedicine({ name, quantity })
- * - getMedicine(medicine_id)
- * - availMedicine({ medicine_id, name, purok, quantity })
- * - listAvailedMedicine()
- *
- * Notes:
- * - availMedicine uses a conditional update (quantity >= requested) before inserting
- *   an availed_medicine row to reduce the chance of race conditions. For strict
- *   transactional guarantees, create a Postgres function (RPC) server-side.
- */
+// Medicine helper — uses `medicine` and `medicine_transactions` tables
 
 export async function listMedicine() {
   const { data, error } = await supabase.from('medicine').select('*').order('created_at', { ascending: false })
@@ -37,26 +23,16 @@ export async function createMedicine({ name, quantity = 0, expiration = null }) 
   return data
 }
 
-/**
- * Avail a medicine (decrease stock and log the avail transaction).
- * Attempts a conditional update to decrement the stock only if the current
- * quantity is >= requested amount. If the conditional update affects 0 rows,
- * the operation is considered failed (insufficient stock or concurrent change).
- *
- * Returns the inserted availed_medicine row on success.
- */
-export async function availMedicine({ medicine_id, name, purok, quantity, expectedtoreturn = null }) {
+export async function availMedicine({ medicine_id, name, purok, quantity }) {
   if (!medicine_id) throw new Error('medicine_id required')
   quantity = Number(quantity)
   if (!quantity || quantity <= 0) throw new Error('quantity must be > 0')
 
-  // Step 1: fetch current quantity
-  const { data: medicine, error: tErr } = await supabase.from('medicine').select('quantity').eq('medicine_id', medicine_id).single()
+  const { data: medicine, error: tErr } = await supabase.from('medicine').select('quantity, name').eq('medicine_id', medicine_id).single()
   if (tErr) throw tErr
   if (!medicine) throw new Error('Medicine not found')
   if (medicine.quantity < quantity) throw new Error('Insufficient stock')
 
-  // Step 2: conditional update (decrement only if quantity >= requested)
   const { data: updated, error: updErr } = await supabase
     .from('medicine')
     .update({ quantity: medicine.quantity - quantity })
@@ -65,36 +41,135 @@ export async function availMedicine({ medicine_id, name, purok, quantity, expect
     .select()
 
   if (updErr) throw updErr
-  // If no rows updated, treat as failure (concurrent update)
-  if (!updated || updated.length === 0) {
-    throw new Error('Failed to reserve stock (concurrent update)')
+  if (!updated || updated.length === 0) throw new Error('Failed to reserve stock (concurrent update)')
+
+  const insertPayload = {
+    medicine_id,
+    medicine_name: medicine.name,
+    quantity,
+    transaction_type: 'request',
+    recipient_name: name || null,
+    recipient_purok: purok || null,
   }
 
-  // Step 3: insert availed_medicine log
-  const insertPayload = { medicine_id, name, purok, quantity }
-  if (expectedtoreturn) insertPayload.expectedtoreturn = expectedtoreturn
-
-  const { data: availRow, error: availErr } = await supabase
-    .from('availed_medicine')
+  const { data: txRow, error: txErr } = await supabase
+    .from('medicine_transactions')
     .insert(insertPayload)
     .select()
     .single()
 
-  if (availErr) {
-    // Attempt to rollback the decrement (best-effort)
-    try {
-      await supabase.from('medicine').update({ quantity: updated[0].quantity + quantity }).eq('medicine_id', medicine_id)
-    } catch (rollbackErr) {
-      console.error('Rollback failed after availed_medicine insert error:', rollbackErr)
-    }
-    throw availErr
+  if (txErr) {
+    try { await supabase.from('medicine').update({ quantity: updated[0].quantity + quantity }).eq('medicine_id', medicine_id) } catch (e) { console.error('Rollback failed:', e) }
+    throw txErr
   }
 
-  return availRow
+  return txRow
 }
 
 export async function listAvailedMedicine() {
-  const { data, error } = await supabase.from('availed_medicine').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('medicine_transactions').select('*').order('created_at', { ascending: false })
+  if (error) throw error
+  return data
+}
+
+export async function updateMedicine(medicine_id, updates) {
+  if (!medicine_id) throw new Error('medicine_id required')
+  const { data, error } = await supabase.from('medicine').update(updates).eq('medicine_id', medicine_id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteMedicine(medicine_id) {
+  if (!medicine_id) throw new Error('medicine_id required')
+  const { error } = await supabase.from('medicine').delete().eq('medicine_id', medicine_id)
+  if (error) throw error
+}
+
+export async function getLowStockMedicine(threshold = 5) {
+  const { data, error } = await supabase
+    .from('medicine')
+    .select('*')
+    .lte('quantity', threshold)
+    .order('quantity', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function getExpiringMedicine(days = 30) {
+  const futureDate = new Date()
+  futureDate.setDate(futureDate.getDate() + days)
+  const futureDateISO = futureDate.toISOString().split('T')[0]
+  const todayISO = new Date().toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('medicine')
+    .select('*')
+    .not('expiration', 'is', null)
+    .lte('expiration', futureDateISO)
+    .gte('expiration', todayISO)
+    .order('expiration', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function getExpiredMedicine() {
+  const todayISO = new Date().toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('medicine')
+    .select('*')
+    .not('expiration', 'is', null)
+    .lt('expiration', todayISO)
+    .order('expiration', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function stockInMedicine(medicine_id, quantity, expiration = null) {
+  if (!medicine_id) throw new Error('medicine_id required')
+  quantity = Number(quantity)
+  if (!quantity || quantity <= 0) throw new Error('quantity must be > 0')
+
+  const { data: current } = await supabase
+    .from('medicine')
+    .select('quantity')
+    .eq('medicine_id', medicine_id)
+    .single()
+
+  const updates = { quantity: (current?.quantity || 0) + quantity }
+  if (expiration) updates.expiration = expiration
+
+  const { data, error } = await supabase
+    .from('medicine')
+    .update(updates)
+    .eq('medicine_id', medicine_id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getMedicineAlerts() {
+  const [lowStock, expiring, expired] = await Promise.all([
+    getLowStockMedicine(),
+    getExpiringMedicine(),
+    getExpiredMedicine(),
+  ])
+  return { lowStock, expiring, expired }
+}
+
+export async function updateMedicineTransaction(transaction_id, updates) {
+  if (!transaction_id) throw new Error('transaction_id required')
+  const { data, error } = await supabase
+    .from('medicine_transactions')
+    .update(updates)
+    .eq('transaction_id', transaction_id)
+    .select()
+    .single()
   if (error) throw error
   return data
 }
@@ -105,4 +180,12 @@ export default {
   getMedicine,
   availMedicine,
   listAvailedMedicine,
+  updateMedicine,
+  updateMedicineTransaction,
+  deleteMedicine,
+  getLowStockMedicine,
+  getExpiringMedicine,
+  getExpiredMedicine,
+  stockInMedicine,
+  getMedicineAlerts,
 }

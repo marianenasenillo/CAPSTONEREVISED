@@ -4,7 +4,6 @@ import { supabase } from '@/utils/supabase'
 
 const emit = defineEmits(['next'])
 
-// Data refs for findings
 const selectedBarangay = ref('')
 const stats = ref({
   householdStats: {
@@ -40,7 +39,6 @@ const stats = ref({
   }
 })
 
-// Fetch deworming statistics
 const fetchDewormingStats = async () => {
   try {
     const { data: dewormingData } = await supabase
@@ -49,10 +47,8 @@ const fetchDewormingStats = async () => {
 
     if (dewormingData) {
       stats.value.dewormingStats.totalDewormed = dewormingData.length
-      // Calculate coverage rate (assuming target population)
       stats.value.dewormingStats.coverageRate = Math.round((dewormingData.length / 356) * 100) // 356 is target population
 
-      // Calculate purok participation
       const purokCounts = {}
       dewormingData.forEach(record => {
         purokCounts[record.purok] = (purokCounts[record.purok] || 0) + 1
@@ -64,7 +60,6 @@ const fetchDewormingStats = async () => {
   }
 }
 
-// Fetch Vitamin A statistics
 const fetchVitaminAStats = async () => {
   try {
     const { data: vitaminAData } = await supabase
@@ -73,14 +68,12 @@ const fetchVitaminAStats = async () => {
 
     if (vitaminAData) {
       stats.value.vitaminAStats.totalSupplemented = vitaminAData.length
-      
-      // Calculate purok coverage
+
       const purokCoverage = {}
       vitaminAData.forEach(record => {
         purokCoverage[record.purok] = (purokCoverage[record.purok] || 0) + 1
       })
 
-      // Find highest and lowest coverage
       let highestRate = 0
       let lowestRate = 100
       let highestPurok = ''
@@ -109,34 +102,25 @@ const fetchVitaminAStats = async () => {
   }
 }
 
-// Fetch tools statistics
 const fetchToolStats = async () => {
   try {
-    // Get data from availed_tools table
     const { data: toolsData } = await supabase
-      .from('availed_tools')
-      .select(`
-        *,
-        tools (
-          tool_id,
-          name
-        )
-      `)
+      .from('tool_transactions')
+      .select('*')
 
     if (toolsData) {
       stats.value.toolStats.totalTools = toolsData.reduce((sum, record) => sum + record.quantity, 0)
-      
-      // Calculate purok distribution
+
       const purokDist = {}
       toolsData.forEach(record => {
-        purokDist[record.purok] = (purokDist[record.purok] || 0) + record.quantity
+        const p = record.recipient_purok || 'Unknown'
+        purokDist[p] = (purokDist[p] || 0) + record.quantity
       })
       stats.value.toolStats.purokDistribution = purokDist
 
-      // Calculate usage by tool type
       const usageByType = {}
       toolsData.forEach(record => {
-        const toolName = record.tools?.name || 'Unknown'
+        const toolName = record.tool_name || 'Unknown'
         usageByType[toolName] = (usageByType[toolName] || 0) + record.quantity
       })
       stats.value.toolStats.usageByType = usageByType
@@ -146,25 +130,20 @@ const fetchToolStats = async () => {
   }
 }
 
-// Fetch household statistics
 const fetchHouseholdStats = async () => {
   try {
-    // Get household heads data
     const { data: householdHeads } = await supabase
       .from('household_heads')
       .select('*, household_members(*)')
       .eq('barangay', selectedBarangay.value)
 
     if (householdHeads) {
-      // Calculate total households and population
       stats.value.householdStats.totalHouseholds = householdHeads.length
       const totalPopulation = householdHeads.reduce((sum, head) => sum + (head.population || 0), 0)
       stats.value.householdStats.totalPopulation = totalPopulation
 
-      // Calculate average household size
       stats.value.householdStats.avgHouseholdSize = householdHeads.length > 0 ? Number((totalPopulation / householdHeads.length).toFixed(1)) : 0
 
-      // Calculate gender distribution
       const maleCount = householdHeads.reduce((sum, head) => sum + (head.male_count || 0), 0)
       const femaleCount = householdHeads.reduce((sum, head) => sum + (head.female_count || 0), 0)
       const totalCount = maleCount + femaleCount
@@ -173,7 +152,6 @@ const fetchHouseholdStats = async () => {
         female: totalCount > 0 ? Math.round((femaleCount / totalCount) * 100) : 0
       }
 
-      // Calculate purok distribution
       const purokDist = {}
       householdHeads.forEach(head => {
         if (head.purok) {
@@ -182,10 +160,8 @@ const fetchHouseholdStats = async () => {
       })
       stats.value.householdStats.purokDistribution = purokDist
 
-      // Get members data for education and civil status
       const allMembers = householdHeads.flatMap(head => head.household_members || [])
-      
-      // Calculate education distribution
+
       const educationDist = {}
       allMembers.forEach(member => {
         if (member.education) {
@@ -194,7 +170,6 @@ const fetchHouseholdStats = async () => {
       })
       stats.value.householdStats.education = educationDist
 
-      // Calculate civil status distribution
       const civilStatusDist = {}
       allMembers.forEach(member => {
         if (member.civil_status) {
@@ -209,7 +184,6 @@ const fetchHouseholdStats = async () => {
 }
 
 onMounted(() => {
-  // Get current user barangay
   const getUserBarangay = async () => {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
@@ -306,7 +280,7 @@ onMounted(() => {
           <ul>
             <li>Children Dewormed (Ages 1–14): {{ stats.dewormingStats.totalDewormed }}</li>
             <li>Coverage Rate: {{ stats.dewormingStats.coverageRate }}%</li>
-            <li>Purok Participation: 
+            <li>Purok Participation:
               <span v-for="(count, purok) in stats.dewormingStats.purokParticipation" :key="purok">
                 {{ purok }}: {{ count }} children,
               </span>
@@ -342,7 +316,33 @@ onMounted(() => {
     </section>
 
     <div class="d-flex justify-content-end mt-4">
-      <button class="btn btn-primary exclude-from-pdf" @click="$emit('next')">Next &rarr;</button>
+      <button class="hs-btn hs-btn-primary exclude-from-pdf" @click="$emit('next')">Next &rarr;</button>
     </div>
   </div>
 </template>
+<style scoped>
+.report-content { font-family: var(--hs-font-family); color: var(--hs-gray-800); }
+.row { display: flex; flex-wrap: wrap; margin-left: -12px; margin-right: -12px; }
+.col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 12px; }
+.col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 12px; }
+.col-md-6 { flex: 0 0 50%; max-width: 50%; padding: 0 12px; }
+.container { max-width: 100%; padding: 0 var(--hs-space-4); }
+.card { background: var(--hs-white); border: 1px solid var(--hs-border); border-radius: var(--hs-radius-lg); }
+.shadow-sm { box-shadow: var(--hs-shadow-sm); }
+.p-3 { padding: var(--hs-space-4); }
+.py-4 { padding-top: var(--hs-space-4); padding-bottom: var(--hs-space-4); }
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: var(--hs-space-1); }
+.mb-3 { margin-bottom: var(--hs-space-3); }
+.mb-4 { margin-bottom: var(--hs-space-4); }
+.my-4 { margin-top: var(--hs-space-4); margin-bottom: var(--hs-space-4); }
+.mt-4 { margin-top: var(--hs-space-4); }
+.text-center { text-align: center; }
+.text-end { text-align: right; }
+.text-start { text-align: left; }
+.fw-bold { font-weight: 600; }
+.d-flex { display: flex; }
+.justify-content-end { justify-content: flex-end; }
+.justify-content-between { justify-content: space-between; }
+.align-items-center { align-items: center; }
+</style>

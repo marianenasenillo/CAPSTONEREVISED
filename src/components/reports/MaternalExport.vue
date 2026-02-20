@@ -20,7 +20,6 @@ const error = ref(null)
 const cervicalRecords = ref([])
 const userBarangay = ref('')
 
-// Chart data for screening by purok (bar chart)
 const screeningChartData = computed(() => {
   const purokCounts = {}
   cervicalRecords.value.forEach(record => {
@@ -39,7 +38,6 @@ const screeningChartData = computed(() => {
   }
 })
 
-// Chart data for screening status (pie chart)
 const statusChartData = computed(() => {
   const statusCounts = { 'Screened': 0, 'Not Screened': 0 }
   cervicalRecords.value.forEach(record => {
@@ -64,7 +62,6 @@ const statusChartData = computed(() => {
   }
 })
 
-// Chart data for age distribution
 const ageChartData = computed(() => {
   const ageGroups = { '20-29': 0, '30-39': 0, '40-49': 0, '50+': 0 }
   cervicalRecords.value.forEach(record => {
@@ -91,7 +88,6 @@ const chartOptions = {
   maintainAspectRatio: false
 }
 
-// Computed explanations
 const screeningExplanation = computed(() => {
   const totalScreened = cervicalRecords.value.length
   const puroks = Object.keys(screeningChartData.value.labels)
@@ -121,7 +117,6 @@ const fetchCervicalRecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')
@@ -271,7 +266,6 @@ onMounted(async () => {
         </div>
       </div>
     </section>
-
 
   </div>
 </template>

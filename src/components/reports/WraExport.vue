@@ -15,12 +15,10 @@ onMounted(async () => {
   await fetchWraRecords()
 })
 
-// Fetch WRA records from Supabase
 const fetchWraRecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')
@@ -46,7 +44,6 @@ const fetchWraRecords = async () => {
   }
 }
 
-// Chart data for WRA by Purok
 const purokChartData = computed(() => {
   const purokCounts = {}
   wraRecords.value.forEach(record => {
@@ -78,7 +75,6 @@ const purokChartData = computed(() => {
   }
 })
 
-// Chart data for SE Status
 const seStatusChartData = computed(() => {
   const statusCounts = { Eligible: 0, 'Not Eligible': 0 }
   wraRecords.value.forEach(record => {
@@ -103,7 +99,6 @@ const seStatusChartData = computed(() => {
   }
 })
 
-// Chart data for Civil Status
 const civilStatusChartData = computed(() => {
   const statusCounts = {}
   wraRecords.value.forEach(record => {
@@ -135,7 +130,6 @@ const civilStatusChartData = computed(() => {
   }
 })
 
-// Chart options
 const chartOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -160,7 +154,6 @@ const pieOptions = {
   }
 }
 
-// Explanations for charts
 const purokExplanation = computed(() => {
   const total = wraRecords.value.length
   const labels = purokChartData.value.labels || []
@@ -301,6 +294,5 @@ const civilExplanation = computed(() => {
       </div>
     </section>
 
-    
   </div>
 </template>

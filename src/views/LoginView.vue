@@ -2,32 +2,17 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
-import { requiredValidator, passwordValidator, emailValidator } from '@/utils/validators.js'
+import { useToast } from '@/composables/useToast'
 
-// form fields
 const email = ref('')
 const password = ref('')
-const role = ref('')
 const showPassword = ref(false)
-
-
-
-// options
-const roleOptions = ['BHW', 'Admin']
-
-
-// validation rules
-const emailRules = [requiredValidator, emailValidator]
-const passwordRules = [requiredValidator, passwordValidator]
-const roleRules = [requiredValidator]
-
-
-// refs
 const form = ref(null)
 const loading = ref(false)
 const router = useRouter()
+const toast = useToast()
 
-// handle login
+// handle login — auto-detect role from user_metadata (no manual role selection)
 const handleLogin = async () => {
   const { valid } = await form.value.validate()
   if (!valid) return
@@ -35,7 +20,6 @@ const handleLogin = async () => {
   loading.value = true
 
   try {
-    // 1️⃣ Try to sign in with Supabase Auth
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.value,
       password: password.value,
@@ -43,198 +27,280 @@ const handleLogin = async () => {
 
     if (error) throw error
 
-    // 2️⃣ Fetch user metadata to check role
     const user = data.user
     const userRole = user?.user_metadata?.role
 
     console.log('User data:', user)
 
-    // 3️⃣ Validate role match (only allow correct role)
-    if (userRole !== role.value) {
-      alert('Invalid role for this account.')
-      await supabase.auth.signOut()
-      return
-    }
-
-    // 4️⃣ Redirect based on role
-    if (userRole === 'Admin') {
-      router.push('/home')
-    } else if (userRole === 'BHW') {
+    if (userRole === 'Admin' || userRole === 'BHW') {
       router.push('/home')
     } else {
-      alert('Unknown role. Please contact admin.')
+      toast.error('Unknown role. Please contact admin.')
+      await supabase.auth.signOut()
     }
 
   } catch (err) {
     console.error(err)
-    alert(err.message || 'Login failed.')
+    toast.error(err.message || 'Login failed.')
   } finally {
     loading.value = false
-  }
-}
-
-// handle forgot password
-const handleForgotPassword = async () => {
-  if (!email.value) {
-    alert('Please enter your email address first.')
-    return
-  }
-
-  try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email.value, {
-      redirectTo: `${window.location.origin}/reset-password`
-    })
-
-    if (error) throw error
-
-    alert('Password reset email sent! Check your inbox.')
-  } catch (err) {
-    console.error(err)
-    alert(err.message || 'Failed to send reset email.')
   }
 }
 </script>
 
 <template>
-  <v-app class="yellow-background">
-    <v-app-bar app color="#5b841e" height="90" class="d-flex align-center px-4" />
+  <div class="auth-page">
+    <div class="auth-container">
+      <!-- Login form -->
+      <div class="auth-form-panel">
+        <div class="auth-form-card">
+          <div class="auth-form-header">
+            <img src="/images/logo.png" alt="HealthSync" class="auth-form-logo" />
+            <h2>Welcome back</h2>
+            <p>Sign in to your HealthSync account</p>
+            <div class="auth-header-accent"></div>
+          </div>
 
-    <v-main class="main-no-scroll">
-      <v-container fluid>
-        <v-row class="fill-height d-flex align-center justify-center">
-          <!-- LEFT SIDE (Logo Card) -->
-          <v-col cols="12" md="7" class="hide-on-mobile">
-            <v-card
-              class="pa-7 flex-grow-1 d-flex align-center justify-center"
-              height="472"
-              elevation="4"
-              color="#fff9c4"
-            >
-              <v-img src="/images/logo.png" contain max-width="700" />
-            </v-card>
-          </v-col>
-
-          <!-- RIGHT SIDE (Login Form Card) -->
-          <v-col cols="12" md="4" class="d-flex justify-center">
-            <v-card
-              class="flex-grow-1 d-flex flex-column justify-center"
-              elevation="4"
-              color="#fff9c4"
-              height="472"
-            >
-              <h3 class="text-center font-weight-bold mt-6"
-                  style="text-decoration: underline; font-size: 28px; color: #2e4e1f">
-                USER LOGIN
-              </h3>
-              <p class="text-center mb-6" style="color: #2e4e1f">
-                Welcome to Buenavista HealthSync
-              </p>
-
-              <v-form ref="form" validate-on="submit" @submit.prevent="handleLogin">
-                <!-- Email -->
-                <v-text-field
+          <v-form ref="form" validate-on="submit" @submit.prevent="handleLogin">
+            <div class="hs-form-group">
+              <label class="hs-label">Email Address</label>
+              <div class="hs-field-icon-wrapper">
+                <span class="mdi mdi-email-outline auth-field-icon"></span>
+                <input
                   v-model="email"
-                  label="Email:"
-                  variant="filled"
-                  bg-color="#5b841e"
-                  color="white"
-                  density="comfortable"
-                  class="mx-12 text-white"
-                  style="--v-theme-on-surface: white"
-                  :rules="emailRules"
+                  type="email"
+                  class="hs-input auth-input-icon"
+                  placeholder="you@example.com"
                 />
+              </div>
+            </div>
 
-                <!-- Password -->
-                <v-text-field
+            <div class="hs-form-group">
+              <label class="hs-label">Password</label>
+              <div class="hs-field-icon-wrapper">
+                <span class="mdi mdi-lock-outline auth-field-icon"></span>
+                <input
                   v-model="password"
-                  label="Password:"
                   :type="showPassword ? 'text' : 'password'"
-                  variant="filled"
-                  bg-color="#5b841e"
-                  color="white"
-                  density="comfortable"
-                  class="mx-12 text-white"
-                  style="--v-theme-on-surface: white"
-                  :rules="passwordRules"
+                  class="hs-input auth-input-icon"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  class="auth-toggle-pw"
+                  @click="showPassword = !showPassword"
                 >
-                  <template #append-inner>
-                    <v-icon
-                      :icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
-                      color="white"
-                      @click="showPassword = !showPassword"
-                      style="cursor: pointer;"
-                    />
-                  </template>
-                </v-text-field>
+                  <span class="mdi" :class="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
+                </button>
+              </div>
+            </div>
 
-                <!-- Select fields -->
-                <v-row class="mx-9">
-                  <v-col cols="12">
-                    <v-select
-                      v-model="role"
-                      label="Role"
-                      :items="roleOptions"
-                      variant="filled"
-                      bg-color="#5b841e"
-                      color="white"
-                      density="comfortable"
-                      class="text-white"
-                      style="--v-theme-on-surface: white"
-                      :rules="roleRules"
-                    />
-                  </v-col>
-                </v-row>
+            <button
+              type="submit"
+              class="hs-btn hs-btn-primary hs-btn-lg hs-w-full"
+              :disabled="loading"
+            >
+              <span v-if="loading" class="hs-spinner hs-spinner-inline"></span>
+              <span v-else>Sign In</span>
+            </button>
+          </v-form>
 
-                <!-- Login Button -->
-                <div class="text-center">
-                  <v-btn
-                    type="submit"
-                    :loading="loading"
-                    class="text-white text-lowercase font-weight-bold"
-                    style="background-color: #5b841e"
-                  >
-                    log in
-                  </v-btn>
-                </div>
-              </v-form>
-              
-              <!-- Forgot Password -->
-              <p class="text-center " >
-                <a href="#" @click.prevent="handleForgotPassword" style="color: black; text-decoration: underline; cursor: pointer;">Forgot password?</a>
-              </p>
+          <div class="auth-divider">
+            <span>or</span>
+          </div>
 
-              <v-divider ></v-divider>
+          <p class="auth-alt-action">
+            Don't have an account?
+            <router-link to="/adminregister" class="auth-alt-link">Create account</router-link>
+          </p>
 
-              <p class="text-center " >
-                Don't have an account? <router-link to="/adminregister" style=" text-decoration: underline; cursor: pointer;">Sign up</router-link>
-              </p>
-             
-            </v-card>
-          </v-col>
-        </v-row>
-      </v-container>
-    </v-main>
+          <div class="public-link-row">
+            <router-link to="/public" class="auth-alt-link">
+              <span class="mdi mdi-earth"></span> View Public Dashboard
+            </router-link>
+          </div>
+        </div>
 
-    <v-footer app color="#5b841e" height="90" class="d-flex align-center justify-center">
-      <span class="text-white text-decoration-underline">2025 All Rights Reserved</span>
-    </v-footer>
-  </v-app>
+        <p class="auth-footer-text">&copy; 2025 Buenavista HealthSync. All Rights Reserved.</p>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.yellow-background {
-  background-color: #ffeb3b;
+.auth-page {
   min-height: 100vh;
-}
-.main-no-scroll {
-  min-height: calc(100vh - 90px - 90px);
+  background: linear-gradient(135deg, #f4f9ec 0%, var(--hs-gray-50) 40%, var(--hs-gray-50) 60%, #f4f9ec 100%);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-@media (max-width: 1264px) {
-  .hide-on-mobile {
-    display: none !important;
+
+.auth-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Form panel */
+.auth-form-panel {
+  width: 460px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 36px 10px 36px;
+  background: var(--hs-white);
+  border-radius: var(--hs-radius-xl);
+  box-shadow: var(--hs-shadow-lg);
+  border-top: 3px solid var(--hs-primary);
+}
+
+.auth-form-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.auth-form-header {
+  text-align: center;
+  margin-bottom: 16px;
+  margin-top: -40px;
+}
+
+.auth-form-logo {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  margin-bottom: -15px;
+}
+
+.auth-form-header h2 {
+  font-size: var(--hs-font-size-2xl);
+  font-weight: 600;
+  color: var(--hs-gray-900);
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+
+.auth-form-header p {
+  font-size: var(--hs-font-size-base);
+  color: var(--hs-gray-500);
+}
+
+.auth-header-accent {
+  width: 40px;
+  height: 3px;
+  background: var(--hs-primary);
+  border-radius: 2px;
+  margin: 14px auto 0;
+}
+
+.auth-field-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 18px;
+  color: var(--hs-gray-400);
+  pointer-events: none;
+}
+
+.auth-input-icon {
+  padding-left: 38px !important;
+}
+
+.auth-toggle-pw {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: var(--hs-gray-400);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 18px;
+}
+
+.auth-toggle-pw:hover {
+  color: var(--hs-gray-600);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hs-border);
+}
+
+.auth-divider span {
+  font-size: var(--hs-font-size-xs);
+  color: var(--hs-gray-400);
+}
+
+.auth-alt-action {
+  text-align: center;
+  font-size: var(--hs-font-size-sm);
+  color: var(--hs-gray-500);
+}
+
+.auth-alt-link {
+  color: var(--hs-primary);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: var(--hs-font-size-sm);
+}
+
+.auth-alt-link:hover {
+  text-decoration: underline;
+}
+
+.public-link-row {
+  text-align: center;
+  margin-top: var(--hs-space-3);
+}
+
+.hs-spinner-inline {
+  width: var(--hs-space-4);
+  height: var(--hs-space-4);
+  border-width: 2px;
+}
+
+.auth-footer-text {
+  margin-top: auto;
+  padding-top: 28px;
+  font-size: var(--hs-font-size-xs);
+  color: var(--hs-gray-400);
+}
+
+@media (max-width: 1024px) {
+  .auth-page {
+    background: var(--hs-white);
+  }
+  .auth-form-panel {
+    width: 100%;
+    min-width: 0;
+    min-height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+    border-top: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-form-panel {
+    padding: 20px 16px;
   }
 }
 </style>

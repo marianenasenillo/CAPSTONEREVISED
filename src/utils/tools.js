@@ -1,20 +1,6 @@
 import { supabase } from './supabase'
 
-/**
- * Tools helper for interacting with `tools` and `availed_tools` tables.
- *
- * Exports:
- * - listTools()
- * - createTool({ name, quantity })
- * - getTool(tool_id)
- * - availTool({ tool_id, name, purok, quantity })
- * - listAvailedTools()
- *
- * Notes:
- * - availTool uses a conditional update (quantity >= requested) before inserting
- *   an availed_tools row to reduce the chance of race conditions. For strict
- *   transactional guarantees, create a Postgres function (RPC) server-side.
- */
+// Tools helper — uses `tools` and `tool_transactions` tables
 
 export async function listTools() {
   const { data, error } = await supabase.from('tools').select('*').order('created_at', { ascending: false })
@@ -37,26 +23,16 @@ export async function createTool({ name, quantity = 0 }) {
   return data
 }
 
-/**
- * Avail a tool (decrease stock and log the avail transaction).
- * Attempts a conditional update to decrement the stock only if the current
- * quantity is >= requested amount. If the conditional update affects 0 rows,
- * the operation is considered failed (insufficient stock or concurrent change).
- *
- * Returns the inserted availed_tools row on success.
- */
-export async function availTool({ tool_id, name, purok, quantity, expectedtoreturn = null }) {
+export async function availTool({ tool_id, name, purok, quantity, daystoreturn = null }) {
   if (!tool_id) throw new Error('tool_id required')
   quantity = Number(quantity)
   if (!quantity || quantity <= 0) throw new Error('quantity must be > 0')
 
-  // Step 1: fetch current quantity
-  const { data: tool, error: tErr } = await supabase.from('tools').select('quantity').eq('tool_id', tool_id).single()
+  const { data: tool, error: tErr } = await supabase.from('tools').select('quantity, name').eq('tool_id', tool_id).single()
   if (tErr) throw tErr
   if (!tool) throw new Error('Tool not found')
   if (tool.quantity < quantity) throw new Error('Insufficient stock')
 
-  // Step 2: conditional update (decrement only if quantity >= requested)
   const { data: updated, error: updErr } = await supabase
     .from('tools')
     .update({ quantity: tool.quantity - quantity })
@@ -65,36 +41,148 @@ export async function availTool({ tool_id, name, purok, quantity, expectedtoretu
     .select()
 
   if (updErr) throw updErr
-  // If no rows updated, treat as failure (concurrent update)
-  if (!updated || updated.length === 0) {
-    throw new Error('Failed to reserve stock (concurrent update)')
+  if (!updated || updated.length === 0) throw new Error('Failed to reserve stock (concurrent update)')
+
+  const insertPayload = {
+    tool_id,
+    tool_name: tool.name,
+    quantity,
+    transaction_type: 'borrow',
+    status: 'borrowed',
+    recipient_name: name || null,
+    recipient_purok: purok || null,
+    expected_return_date: daystoreturn || null,
   }
 
-  // Step 3: insert availed_tools log
-  const insertPayload = { tool_id, name, purok, quantity }
-  if (expectedtoreturn) insertPayload.expectedtoreturn = expectedtoreturn
-
-  const { data: availRow, error: availErr } = await supabase
-    .from('availed_tools')
+  const { data: txRow, error: txErr } = await supabase
+    .from('tool_transactions')
     .insert(insertPayload)
     .select()
     .single()
 
-  if (availErr) {
-    // Attempt to rollback the decrement (best-effort)
-    try {
-      await supabase.from('tools').update({ quantity: updated[0].quantity + quantity }).eq('tool_id', tool_id)
-    } catch (rollbackErr) {
-      console.error('Rollback failed after availed_tools insert error:', rollbackErr)
-    }
-    throw availErr
+  if (txErr) {
+    try { await supabase.from('tools').update({ quantity: updated[0].quantity + quantity }).eq('tool_id', tool_id) } catch (e) { console.error('Rollback failed:', e) }
+    throw txErr
   }
 
-  return availRow
+  return txRow
 }
 
 export async function listAvailedTools() {
-  const { data, error } = await supabase.from('availed_tools').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase.from('tool_transactions').select('*').order('created_at', { ascending: false })
+  if (error) throw error
+  return data
+}
+
+export async function updateTool(tool_id, updates) {
+  if (!tool_id) throw new Error('tool_id required')
+  const { data, error } = await supabase.from('tools').update(updates).eq('tool_id', tool_id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteTool(tool_id) {
+  if (!tool_id) throw new Error('tool_id required')
+  const { error } = await supabase.from('tools').delete().eq('tool_id', tool_id)
+  if (error) throw error
+}
+
+export async function getLowStockTools(threshold = 3) {
+  const { data, error } = await supabase
+    .from('tools')
+    .select('*')
+    .lte('quantity', threshold)
+    .order('quantity', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function returnTool(transaction_id, return_quantity = null) {
+  const { data: record, error: rErr } = await supabase
+    .from('tool_transactions')
+    .select('*')
+    .eq('transaction_id', transaction_id)
+    .single()
+
+  if (rErr) throw rErr
+  if (!record) throw new Error('Borrow record not found')
+  if (record.status === 'returned') throw new Error('Tool already returned')
+
+  const qty = return_quantity ? Number(return_quantity) : record.quantity
+
+  const { data: tool } = await supabase.from('tools').select('quantity').eq('tool_id', record.tool_id).single()
+
+  const { error: updErr } = await supabase
+    .from('tools')
+    .update({ quantity: (tool?.quantity || 0) + qty })
+    .eq('tool_id', record.tool_id)
+
+  if (updErr) throw updErr
+
+  const { data: updated, error: upErr } = await supabase
+    .from('tool_transactions')
+    .update({ status: 'returned', return_date: new Date().toISOString(), return_quantity: qty })
+    .eq('transaction_id', transaction_id)
+    .select()
+    .single()
+
+  if (upErr) throw upErr
+  return updated
+}
+
+export async function getActiveBorrows() {
+  const { data, error } = await supabase
+    .from('tool_transactions')
+    .select('*')
+    .or('status.is.null,status.eq.borrowed')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function getOverdueBorrows() {
+  const todayISO = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('tool_transactions')
+    .select('*')
+    .or('status.is.null,status.eq.borrowed')
+    .not('expected_return_date', 'is', null)
+    .lt('expected_return_date', todayISO)
+    .order('expected_return_date', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function stockInTool(tool_id, quantity) {
+  if (!tool_id) throw new Error('tool_id required')
+  quantity = Number(quantity)
+  if (!quantity || quantity <= 0) throw new Error('quantity must be > 0')
+
+  const { data: current } = await supabase.from('tools').select('quantity').eq('tool_id', tool_id).single()
+
+  const { data, error } = await supabase
+    .from('tools')
+    .update({ quantity: (current?.quantity || 0) + quantity })
+    .eq('tool_id', tool_id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateToolTransaction(transaction_id, updates) {
+  if (!transaction_id) throw new Error('transaction_id required')
+  const { data, error } = await supabase
+    .from('tool_transactions')
+    .update(updates)
+    .eq('transaction_id', transaction_id)
+    .select()
+    .single()
   if (error) throw error
   return data
 }
@@ -105,4 +193,12 @@ export default {
   getTool,
   availTool,
   listAvailedTools,
+  updateTool,
+  updateToolTransaction,
+  deleteTool,
+  getLowStockTools,
+  returnTool,
+  getActiveBorrows,
+  getOverdueBorrows,
+  stockInTool,
 }

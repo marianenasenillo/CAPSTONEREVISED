@@ -20,7 +20,6 @@ const purokPieChartData = ref({})
 const discussionText = ref('')
 
 onMounted(async () => {
-  // Get current user barangay
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) {
     console.error('Error getting user:', userError)
@@ -39,7 +38,6 @@ onMounted(async () => {
 
   generateDiscussion()
 
-  // Create charts
   if (genderPieCanvas.value) {
     new ChartJS(genderPieCanvas.value, {
       type: 'pie',
@@ -283,10 +281,10 @@ const generateDiscussion = () => {
     </div>
   </div>
   <section v-html="discussionText"></section>
-              
+
               <div class="d-flex justify-content-between mt-4">
-               <button class="btn btn-secondary exclude-from-pdf" @click="$emit('prev')">&larr; Back</button>
-      <button class="btn btn-primary exclude-from-pdf" @click="$emit('next')">Next &rarr;</button>
+               <button class="hs-btn hs-btn-secondary exclude-from-pdf" @click="$emit('prev')">&larr; Back</button>
+      <button class="hs-btn hs-btn-primary exclude-from-pdf" @click="$emit('next')">Next &rarr;</button>
               </div>
             </template>
 
@@ -295,4 +293,28 @@ canvas {
   height: 300px !important;
   width: 100% !important;
 }
+.report-content { font-family: var(--hs-font-family); color: var(--hs-gray-800); }
+.row { display: flex; flex-wrap: wrap; margin-left: -12px; margin-right: -12px; }
+.col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 12px; }
+.col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 12px; }
+.col-md-6 { flex: 0 0 50%; max-width: 50%; padding: 0 12px; }
+.container { max-width: 100%; padding: 0 var(--hs-space-4); }
+.card { background: var(--hs-white); border: 1px solid var(--hs-border); border-radius: var(--hs-radius-lg); }
+.shadow-sm { box-shadow: var(--hs-shadow-sm); }
+.p-3 { padding: var(--hs-space-4); }
+.py-4 { padding-top: var(--hs-space-4); padding-bottom: var(--hs-space-4); }
+.mb-0 { margin-bottom: 0; }
+.mb-1 { margin-bottom: var(--hs-space-1); }
+.mb-3 { margin-bottom: var(--hs-space-3); }
+.mb-4 { margin-bottom: var(--hs-space-4); }
+.my-4 { margin-top: var(--hs-space-4); margin-bottom: var(--hs-space-4); }
+.mt-4 { margin-top: var(--hs-space-4); }
+.text-center { text-align: center; }
+.text-end { text-align: right; }
+.text-start { text-align: left; }
+.fw-bold { font-weight: 600; }
+.d-flex { display: flex; }
+.justify-content-end { justify-content: flex-end; }
+.justify-content-between { justify-content: space-between; }
+.align-items-center { align-items: center; }
 </style>

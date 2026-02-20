@@ -20,7 +20,6 @@ const error = ref(null)
 const familyPlanningRecords = ref([])
 const userBarangay = ref('')
 
-// Chart data for family planning records (bar chart by purok)
 const purokChartData = computed(() => {
   const purokCounts = {}
   familyPlanningRecords.value.forEach(record => {
@@ -39,7 +38,6 @@ const purokChartData = computed(() => {
   }
 })
 
-// Chart data for gender distribution (pie chart)
 const genderChartData = computed(() => {
   const genderCounts = { Male: 0, Female: 0 }
   familyPlanningRecords.value.forEach(record => {
@@ -70,7 +68,6 @@ const chartOptions = {
   maintainAspectRatio: false
 }
 
-// Computed explanations
 const purokExplanation = computed(() => {
   const totalIndividuals = familyPlanningRecords.value.length
   const puroks = Object.keys(purokChartData.value.labels)
@@ -94,7 +91,6 @@ const fetchFamilyPlanningRecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')

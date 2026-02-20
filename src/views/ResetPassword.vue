@@ -11,7 +11,6 @@ const loading = ref(false)
 const error = ref('')
 const success = ref(false)
 
-// Validation rules
 const passwordRules = [requiredValidator, passwordValidator]
 const confirmPasswordRules = [
   requiredValidator,
@@ -98,121 +97,105 @@ const handleResetPassword = async () => {
 </script>
 
 <template>
-  <v-app class="yellow-background">
-    <v-app-bar app color="#5b841e" height="90" class="d-flex align-center px-4" />
+  <div class="auth-page">
+    <div class="auth-container">
+      <div class="auth-branding">
+        <div class="auth-branding-inner">
+          <img src="/images/logo.png" alt="HealthSync" class="auth-brand-logo" />
+          <h1 class="auth-brand-title">Buenavista HealthSync</h1>
+          <p class="auth-brand-desc">Secure password reset</p>
+        </div>
+      </div>
 
-    <v-main class="main-no-scroll">
-      <v-container fluid>
-        <v-row class="fill-height d-flex align-center justify-center">
-          <!-- LEFT SIDE (Logo Card) -->
-          <v-col cols="12" md="7" class="hide-on-mobile">
-            <v-card
-              class="pa-7 flex-grow-1 d-flex align-center justify-center"
-              height="472"
-              elevation="4"
-              color="#fff9c4"
-            >
-              <v-img src="/images/logo.png" contain max-width="700" />
-            </v-card>
-          </v-col>
+      <div class="auth-form-panel">
+        <div class="auth-form-card">
+          <div class="auth-form-header">
+            <img src="/images/logo.png" alt="HealthSync" class="auth-form-logo" />
+            <h2>Reset Password</h2>
+            <p>Enter your new password below</p>
+          </div>
 
-          <!-- RIGHT SIDE (Reset Password Form Card) -->
-          <v-col cols="12" md="4" class="d-flex justify-center">
-            <v-card
-              class="flex-grow-1 d-flex flex-column justify-center"
-              elevation="4"
-              color="#fff9c4"
-              height="472"
-            >
-              <h3 class="text-center font-weight-bold mt-6"
-                  style="text-decoration: underline; font-size: 28px; color: #2e4e1f">
-                RESET PASSWORD
-              </h3>
-              <p class="text-center mb-6" style="color: #2e4e1f">
-                Enter your new password below
-              </p>
+          <div v-if="error" class="hs-alert hs-alert-error">{{ error }}</div>
 
-              <div v-if="error" class="alert alert-danger mx-4 mb-4">
-                {{ error }}
+          <div v-if="success" class="hs-alert hs-alert-success">
+            Password reset successful! Redirecting to login...
+          </div>
+
+          <form v-else @submit.prevent="handleResetPassword">
+            <div class="hs-form-group">
+              <label class="hs-label">New Password</label>
+              <div class="hs-field-icon-wrapper">
+                <span class="mdi mdi-lock-outline auth-field-icon"></span>
+                <input v-model="newPassword" type="password" class="hs-input auth-input-icon" placeholder="Enter new password" />
               </div>
+            </div>
 
-              <div v-if="success" class="alert alert-success mx-4 mb-4">
-                Password reset successful! Redirecting to login...
+            <div class="hs-form-group">
+              <label class="hs-label">Confirm Password</label>
+              <div class="hs-field-icon-wrapper">
+                <span class="mdi mdi-lock-check-outline auth-field-icon"></span>
+                <input v-model="confirmPassword" type="password" class="hs-input auth-input-icon" placeholder="Confirm new password" />
               </div>
+            </div>
 
-              <v-form v-else ref="form" validate-on="submit" @submit.prevent="handleResetPassword">
-                <!-- New Password -->
-                <v-text-field
-                  v-model="newPassword"
-                  label="New Password:"
-                  type="password"
-                  variant="filled"
-                  bg-color="#5b841e"
-                  color="white"
-                  density="comfortable"
-                  class="mx-12 text-white"
-                  style="--v-theme-on-surface: white"
-                  :rules="passwordRules"
-                />
+            <button
+              type="submit"
+              class="hs-btn hs-btn-primary hs-btn-lg hs-w-full"
+              :disabled="loading"
+            >
+              <span v-if="loading" class="hs-spinner hs-spinner-inline"></span>
+              <span v-else>Reset Password</span>
+            </button>
+          </form>
 
-                <!-- Confirm Password -->
-                <v-text-field
-                  v-model="confirmPassword"
-                  label="Confirm Password:"
-                  type="password"
-                  variant="filled"
-                  bg-color="#5b841e"
-                  color="white"
-                  density="comfortable"
-                  class="mx-12 text-white"
-                  style="--v-theme-on-surface: white"
-                  :rules="confirmPasswordRules"
-                />
+          <p class="auth-alt-action">
+            <router-link to="/" class="auth-alt-link">Back to Login</router-link>
+          </p>
+        </div>
 
-                <!-- Reset Button -->
-                <div class="mx-16">
-                  <v-btn
-                    type="submit"
-                    :loading="loading"
-                    block
-                    class="text-white text-lowercase font-weight-bold"
-                    style="background-color: #5b841e"
-                  >
-                    reset password
-                  </v-btn>
-                </div>
-              </v-form>
-
-              <!-- Back to Login -->
-              <p class="text-center mt-2">
-                <router-link to="/" style="color: black; text-decoration: underline">Back to Login</router-link>
-              </p>
-            </v-card>
-          </v-col>
-        </v-row>
-      </v-container>
-    </v-main>
-
-    <v-footer app color="#5b841e" height="90" class="d-flex align-center justify-center">
-      <span class="text-white text-decoration-underline">2025 All Rights Reserved</span>
-    </v-footer>
-  </v-app>
+        <p class="auth-footer-text">&copy; 2025 Buenavista HealthSync. All Rights Reserved.</p>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.yellow-background {
-  background-color: #ffeb3b;
-  min-height: 100vh;
+.auth-page { min-height: 100vh; background: var(--hs-gray-50); }
+.auth-container { display: flex; min-height: 100vh; }
+.auth-branding {
+  flex: 1;
+  background: linear-gradient(135deg, var(--hs-primary) 0%, var(--hs-primary-dark) 50%, var(--hs-primary-darker) 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px; position: relative; overflow: hidden;
 }
-.main-no-scroll {
-  min-height: calc(100vh - 90px - 90px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.auth-branding::before {
+  content: ''; position: absolute; inset: 0;
+  background: url('/images/logo.png') center/36% no-repeat; opacity: 0.04;
 }
-@media (max-width: 1264px) {
-  .hide-on-mobile {
-    display: none !important;
-  }
+.auth-branding-inner { position: relative; text-align: center; max-width: 400px; }
+.auth-brand-logo { width: 100px; height: 100px; object-fit: contain; margin-bottom: 20px; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.15)); }
+.auth-brand-title { font-size: var(--hs-font-size-3xl); font-weight: 600; color: var(--hs-white); margin-bottom: 10px; letter-spacing: -0.02em; }
+.auth-brand-desc { font-size: var(--hs-font-size-sm); color: rgba(255,255,255,0.75); line-height: 1.6; }
+.auth-form-panel {
+  width: 460px; min-width: 460px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 36px; background: var(--hs-white);
 }
+.auth-form-card { width: 100%; max-width: 360px; }
+.auth-form-header { text-align: center; margin-bottom: 28px; }
+.auth-form-logo { width: 40px; height: 40px; object-fit: contain; margin-bottom: 14px; }
+.auth-form-header h2 { font-size: var(--hs-font-size-xl); font-weight: 600; color: var(--hs-gray-900); margin-bottom: 4px; letter-spacing: -0.01em; }
+.auth-form-header p { font-size: var(--hs-font-size-sm); color: var(--hs-gray-500); }
+.auth-field-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--hs-gray-400); pointer-events: none; }
+.auth-input-icon { padding-left: 34px !important; }
+.auth-alt-action { text-align: center; font-size: var(--hs-font-size-sm); color: var(--hs-gray-500); margin-top: var(--hs-space-5); }
+.hs-spinner-inline { width: var(--hs-space-4); height: var(--hs-space-4); border-width: 2px; }
+.auth-alt-link { color: var(--hs-primary); font-weight: 600; text-decoration: none; }
+.auth-alt-link:hover { text-decoration: underline; }
+.auth-footer-text { margin-top: auto; padding-top: 28px; font-size: var(--hs-font-size-xs); color: var(--hs-gray-400); }
+.hs-alert { padding: 8px 12px; border-radius: var(--hs-radius-md); font-size: var(--hs-font-size-xs); margin-bottom: 12px; }
+.hs-alert-success { background: var(--hs-success-bg); color: var(--hs-success); border: 1px solid var(--hs-success-border); }
+.hs-alert-error { background: var(--hs-danger-bg); color: var(--hs-danger); border: 1px solid var(--hs-danger-border); }
+@media (max-width: 1024px) { .auth-branding { display: none; } .auth-form-panel { width: 100%; min-width: 0; } }
+@media (max-width: 480px) { .auth-form-panel { padding: 20px 16px; } }
 </style>

@@ -1,13 +1,15 @@
 <script setup>
-import DashboardView from '@/components/DashboardView.vue'
 import ChildcareExport from '@/components/reports/ChildcareExport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
+import { usePagination } from '@/composables/usePagination'
+import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
+const toast = useToast()
 const goBack = () => router.back()
 
 const loading = ref(true)
@@ -17,6 +19,8 @@ const searchQuery = ref('')
 
 const userRole = ref('')
 const selectedPurok = ref('')
+const selectedGender = ref('')
+const selectedAgeRange = ref('')
 const editRecord = ref(null)
 const showEditModal = ref(false)
 
@@ -50,13 +54,25 @@ const filteredRecords = computed(() => {
   if (selectedPurok.value) {
     records = records.filter(r => r.purok === selectedPurok.value)
   }
+  if (selectedGender.value) {
+    records = records.filter(r => r.gender === selectedGender.value)
+  }
+  if (selectedAgeRange.value) {
+    const [min, max] = selectedAgeRange.value.split('-').map(Number)
+    records = records.filter(r => {
+      const a = Number(r.age)
+      return !isNaN(a) && a >= min && a <= max
+    })
+  }
   return records
 })
 
+const { currentPage, itemsPerPage, itemsPerPageOptions, totalItems, totalPages, paginatedData, startIndex, endIndex, visiblePages, goToPage, nextPage, prevPage, firstPage, lastPage, resetPage } = usePagination(filteredRecords)
+
+watch([searchQuery, selectedPurok, selectedGender, selectedAgeRange], () => resetPage())
+
 const handleSearch = () => {
-  // computed `filteredRecords` will react to `searchQuery`; keep placeholder for possible analytics or focus behavior
-  // we can also scroll table to top when searching
-  const el = document.querySelector('.table-responsive.large-table')
+  const el = document.querySelector('.hs-table-scroll')
   if (el) el.scrollTop = 0
 }
 
@@ -64,7 +80,6 @@ const fetchVitaminARecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')
@@ -79,7 +94,7 @@ const fetchVitaminARecords = async () => {
       .from('childcare_vitamina_records')
       .select('*')
       .eq('is_archived', false)
-      .order('created_at', { ascending: false })
+      .order('lastname', { ascending: true })
 
     if (err) throw err
     vitaminARecords.value = data.map(record => ({
@@ -102,7 +117,6 @@ const fetchVitaminARecords = async () => {
   }
 }
 
-// Delete Record
 const deleteRecord = async (record) => {
   if (!confirm(`Are you sure you want to delete the Vitamin A record for "${record.firstname} ${record.lastname}"? This action cannot be undone.`)) {
     return
@@ -116,15 +130,14 @@ const deleteRecord = async (record) => {
 
     if (error) throw error
 
-    alert('Record deleted successfully.')
+    toast.success('Record deleted successfully.')
     await fetchVitaminARecords() // Refresh the list
   } catch (e) {
     console.error(e)
-    alert('Error deleting record.')
+    toast.error('Error deleting record.')
   }
 }
 
-// Edit Record
 const editRecordFunc = (record) => {
   editRecord.value = { ...record }
   showEditModal.value = true
@@ -149,16 +162,15 @@ const saveEdit = async () => {
 
     if (error) throw error
 
-    alert('Record updated successfully.')
+    toast.success('Record updated successfully.')
     showEditModal.value = false
     await fetchVitaminARecords()
   } catch (e) {
     console.error(e)
-    alert('Error updating record.')
+    toast.error('Error updating record.')
   }
 }
 
-// Archive Record
 const archiveRecord = async (record) => {
   if (!confirm(`Are you sure you want to archive the Vitamin A record for "${record.firstname} ${record.lastname}"?`)) {
     return
@@ -175,33 +187,26 @@ const archiveRecord = async (record) => {
 
     if (error) throw error
 
-    alert('Record archived successfully.')
+    toast.success('Record archived successfully.')
     await fetchVitaminARecords() // Refresh the list
   } catch (e) {
     console.error(e)
-    alert('Error archiving record.')
+    toast.error('Error archiving record.')
   }
 }
 
-// Export PDF function
 const exportPdf = async () => {
-  const element = document.querySelector('.large-table')
+  const element = document.querySelector('.hs-table-scroll')
   if (!element) {
-    alert('Table not found.')
+    toast.error('Table not found.')
     return
   }
 
   try {
-    // Temporarily expand the container to show all content
-    const wrapper = element.closest('.table-wrapper')
-    let originalHeight = ''
-    let originalOverflow = ''
-    if (wrapper) {
-      originalHeight = wrapper.style.height
-      originalOverflow = wrapper.style.overflow
-      wrapper.style.height = 'auto'
-      wrapper.style.overflow = 'visible'
-    }
+    let originalHeight = element.style.maxHeight
+    let originalOverflow = element.style.overflow
+    element.style.maxHeight = 'none'
+    element.style.overflow = 'visible'
 
     const table = element.querySelector('table')
     let originalTableHeight = ''
@@ -210,7 +215,6 @@ const exportPdf = async () => {
       table.style.height = 'auto'
     }
 
-    // wait a moment so content can adjust
     await new Promise(resolve => setTimeout(resolve, 300))
 
     const canvas = await html2canvas(element, {
@@ -220,11 +224,8 @@ const exportPdf = async () => {
       backgroundColor: '#ffffff'
     })
 
-    // Restore styles
-    if (wrapper) {
-      wrapper.style.height = originalHeight
-      wrapper.style.overflow = originalOverflow
-    }
+    element.style.maxHeight = originalHeight
+    element.style.overflow = originalOverflow
     if (table) {
       table.style.height = originalTableHeight
     }
@@ -252,20 +253,18 @@ const exportPdf = async () => {
     pdf.save('childcare_report.pdf')
   } catch (error) {
     console.error('Error generating PDF:', error)
-    alert('Error generating PDF. Please try again.')
+    toast.error('Error generating PDF. Please try again.')
   }
 }
 const exportreportPdf = async () => {
   if (!reportRef.value) return
   const element = reportRef.value
 
-  // temporarily remove max-height/overflow so entire content is captured
   const originalOverflow = element.style.overflow
   const originalMaxHeight = element.style.maxHeight
   element.style.overflow = 'visible'
   element.style.maxHeight = 'none'
 
-  // Temporarily reduce logo sizes for PDF export
   const logos = element.querySelectorAll('img[alt="Province Logo"], img[alt="Barangay Logo"]')
   const originalSizes = []
   const originalMargins = []
@@ -279,11 +278,9 @@ const exportreportPdf = async () => {
     }
   })
 
-  // Render element to canvas at higher scale for better quality
   const canvas = await html2canvas(element, { scale: 2, useCORS: true })
   const imgData = canvas.toDataURL('image/png')
 
-  // Restore logo sizes
   logos.forEach((img, index) => {
     img.style.height = originalSizes[index]
     if (img.alt === 'Province Logo') {
@@ -292,12 +289,10 @@ const exportreportPdf = async () => {
     }
   })
 
-  // A4 size in mm
   const pdf = new jsPDF('p', 'mm', 'a4')
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
-  // Convert canvas pixel size to mm for jsPDF
   const pxPerMm = canvas.width / (pageWidth * (window.devicePixelRatio || 1))
   const imgWidthMm = pageWidth
   const imgHeightMm = (canvas.height / pxPerMm) / (window.devicePixelRatio || 1)
@@ -305,310 +300,217 @@ const exportreportPdf = async () => {
   let remainingHeight = imgHeightMm
   let position = 0
 
-  // Add image slices per page
   while (remainingHeight > 0) {
     pdf.addImage(imgData, 'PNG', 0, position, imgWidthMm, imgHeightMm)
     remainingHeight -= pageHeight
     if (remainingHeight > 0) pdf.addPage()
-    // next page position: shift the image up by pageHeight (negative)
     position -= pageHeight
   }
 
   pdf.save('report.pdf')
 
-  // restore styles
   element.style.overflow = originalOverflow
   element.style.maxHeight = originalMaxHeight
 }
 </script>
 
-
 <template>
-  <DashboardView>
-    <div class="childcare-bg">
-      <div class="container">
-        <div class="records-top d-flex align-items-center mb-2">
-          <button class="btn btn-outline-secondary me-3" style="background-color: #5b841e; color: white; border-color: #5b841e;" @click="goBack">← Back</button>
-          <h3 class="mb-0">Vitamin A Supplementation Records</h3>
-          <div class="ms-auto search-box">
-            <div class="input-group">
-              <button class="btn btn-primary export-btn" @click="exportPdf">Export</button>
-              <input v-model="searchQuery" @keyup.enter="handleSearch" type="search" class="form-control search-input" placeholder="Search by Last Name or First Name..." aria-label="Search by Last Name or First Name">
-              <button class="btn btn-primary search-btn" @click="handleSearch">Search</button>
-              <button class="btn btn-outline-secondary ms-2" v-if="searchQuery" @click="searchQuery = ''">Clear</button>
-              <button v-if="userRole === 'Admin'" class="btn btn-warning report-btn" @click="router.push('/childcarearchived')">Archived</button>
-              <button v-if="userRole === 'Admin'" class="btn btn-primary report-btn" @click="openReport">Report</button>
+    <div class="service-page">
+      <div class="hs-page-header">
+        <div class="hs-breadcrumb">Dashboard / Child Care / Records</div>
+        <h1>Vitamin A Supplementation Records</h1>
+        <p class="hs-module-desc">View, edit, and manage childcare immunization and health records.</p>
+      </div>
+
+      <div class="hs-toolbar">
+        <div class="hs-toolbar-left">
+          <button class="hs-btn hs-btn-secondary" @click="goBack"><span class="mdi mdi-arrow-left"></span> Back</button>
+          <select v-model="selectedPurok" class="hs-select hs-w-auto">
+            <option value="">Purok</option>
+            <option value="Purok 1">Purok 1</option>
+            <option value="Purok 2">Purok 2</option>
+            <option value="Purok 3">Purok 3</option>
+            <option value="Purok 4">Purok 4</option>
+          </select>
+          <select v-model="selectedGender" class="hs-select hs-w-auto">
+            <option value="">Gender</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </select>
+          <select v-model="selectedAgeRange" class="hs-select hs-w-auto">
+            <option value="">Age Range</option>
+            <option value="0-1">0-1</option>
+            <option value="2-5">2-5</option>
+            <option value="6-11">6-11</option>
+            <option value="12-17">12-17</option>
+          </select>
+        </div>
+        <div class="hs-toolbar-right">
+          <div class="hs-search-box">
+              <span class="mdi mdi-magnify"></span>
+              <input v-model="searchQuery" type="search" placeholder="Search..." />
             </div>
+          <button class="hs-btn hs-btn-primary" @click="exportPdf"><span class="mdi mdi-file-export-outline"></span> Export</button>
+          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning" @click="router.push('/childcarearchived')"><span class="mdi mdi-archive-outline"></span> Archived</button>
+          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
+        </div>
+      </div>
+
+      <div v-if="loading" class="hs-empty-state"><div class="hs-spinner"></div><p>Loading records...</p></div>
+      <div v-else-if="error" class="hs-error-alert">{{ error }}</div>
+      <div v-else class="hs-card hs-card--flush">
+        <div class="hs-table-scroll">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>Purok</th>
+                <th>Last Name</th>
+                <th>First Name</th>
+                <th>Middle Name</th>
+                <th>Suffix</th>
+                <th>Age</th>
+                <th>Birthdate</th>
+                <th>Gender</th>
+                <th>Full name of Mother</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in paginatedData" :key="record.id">
+                <td>{{ record.purok }}</td>
+                <td>{{ record.lastname }}</td>
+                <td>{{ record.firstname }}</td>
+                <td>{{ record.middlename }}</td>
+                <td>{{ record.suffix }}</td>
+                <td>{{ record.age }}</td>
+                <td>{{ record.birthdate }}</td>
+                <td>{{ record.gender }}</td>
+                <td>{{ record.motherName }}</td>
+                <td>
+                  <v-menu :model-value="showActionsDropdown === record.id" @update:model-value="val => val ? showActionsDropdown = record.id : showActionsDropdown = null" offset-y>
+                    <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>
+                    <v-list>
+                      <v-list-item v-if="userRole === 'BHW'" @click="editRecordFunc(record)">Edit</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
+                    </v-list>
+                  </v-menu>
+                </td>
+              </tr>
+              <tr v-if="filteredRecords.length === 0"><td colspan="10" class="hs-table-empty">No records found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="hs-pagination">
+          <div class="hs-pagination-info">
+            <span>Show</span>
+            <select v-model.number="itemsPerPage">
+              <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+            <span>entries &mdash; {{ startIndex }}-{{ endIndex }} of {{ totalItems }}</span>
+          </div>
+          <div class="hs-pagination-controls">
+            <button @click="firstPage" :disabled="currentPage === 1"><span class="mdi mdi-chevron-double-left"></span></button>
+            <button @click="prevPage" :disabled="currentPage === 1"><span class="mdi mdi-chevron-left"></span></button>
+            <button v-for="p in visiblePages" :key="p" :class="{ active: p === currentPage }" @click="goToPage(p)">{{ p }}</button>
+            <button @click="nextPage" :disabled="currentPage === totalPages"><span class="mdi mdi-chevron-right"></span></button>
+            <button @click="lastPage" :disabled="currentPage === totalPages"><span class="mdi mdi-chevron-double-right"></span></button>
           </div>
         </div>
+      </div>
 
-        <div v-if="loading" class="text-center my-4">
-          <div class="spinner-border text-primary" role="status"></div>
-          <p>Loading records...</p>
-        </div>
-
-        <div v-else-if="error" class="alert alert-danger">
-          {{ error }}
-        </div>
-
-        <div v-else>
-          <div class="table-wrapper">
-            <div class="table-responsive large-table">
-              <table class="table table-bordered table-striped mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th><select v-model="selectedPurok" class="form-select me-2" style="max-width: 150px;">
-                <option value="">Purok</option>
-                <option value="Purok 1">Purok 1</option>
-                <option value="Purok 2">Purok 2</option>
-                <option value="Purok 3">Purok 3</option>
-                <option value="Purok 4">Purok 4</option>
-              </select></th>
-                    <th>Last Name</th>
-                    <th>First Name</th>
-                    <th>Middle Name</th>
-                    <th>Suffix</th>
-                    <th>Age</th>
-                    <th>Birthdate</th>
-                    <th>Gender</th>
-                    <th>Full name of Mother</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="record in filteredRecords" :key="record.id">
-                    <td>{{ record.purok }}</td>
-                    <td>{{ record.lastname }}</td>
-                    <td>{{ record.firstname }}</td>
-                    <td>{{ record.middlename }}</td>
-                    <td>{{ record.suffix }}</td>
-                    <td>{{ record.age }}</td>
-                    <td>{{ record.birthdate }}</td>
-                    <td>{{ record.gender }}</td>
-                    <td>{{ record.motherName }}</td>
-                    <td>
-                      <v-menu :model-value="showActionsDropdown === record.id" @update:model-value="val => val ? showActionsDropdown = record.id : showActionsDropdown = null" offset-y>
-                        <template #activator="{ props }">
-                          <v-btn icon v-bind="props" size="small">
-                            <v-icon>mdi-dots-vertical</v-icon>
-                          </v-btn>
-                        </template>
-                        <v-list>
-                          <v-list-item v-if="userRole === 'BHW'" @click="editRecordFunc(record)">Edit</v-list-item>
-                          <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
-                          <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
-                        </v-list>
-                      </v-menu>
-                    </td>
-                  </tr>
-
-                  <tr v-if="filteredRecords.length === 0">
-                    <td colspan="10" class="text-center">No records found.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+      <!-- Edit Modal -->
+      <div v-if="showEditModal" class="hs-modal-overlay" @click.self="showEditModal = false">
+        <div class="hs-modal hs-modal-lg">
+          <div class="hs-modal-header">
+            <h3>Edit Vitamin A Record: {{ editRecord.firstname }} {{ editRecord.lastname }}</h3>
+            <button class="hs-modal-close" @click="showEditModal = false">&times;</button>
           </div>
-        </div>
-
-        <!-- Modal for Editing Record -->
-        <div class="modal fade show d-block" tabindex="-1" v-if="showEditModal" style="background: rgba(0,0,0,0.6)">
-          <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title">Edit Vitamin A Record: {{ editRecord.firstname }} {{ editRecord.lastname }}</h5>
-                <button type="button" class="btn-close" @click="showEditModal = false"></button>
+          <div class="hs-modal-body">
+            <form @submit.prevent="saveEdit">
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Purok</label>
+                  <select v-model="editRecord.purok" class="hs-select" required>
+                    <option value="Purok 1">Purok 1</option>
+                    <option value="Purok 2">Purok 2</option>
+                    <option value="Purok 3">Purok 3</option>
+                    <option value="Purok 4">Purok 4</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Last Name</label>
+                  <input v-model="editRecord.lastname" type="text" class="hs-input" required>
+                </div>
               </div>
-              <div class="modal-body">
-                <form @submit.prevent="saveEdit">
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label>Purok</label>
-                      <select v-model="editRecord.purok" class="form-control" required>
-                        <option value="Purok 1">Purok 1</option>
-                        <option value="Purok 2">Purok 2</option>
-                        <option value="Purok 3">Purok 3</option>
-                        <option value="Purok 5">Purok 5</option>
-                      </select>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Last Name</label>
-                      <input v-model="editRecord.lastname" type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>First Name</label>
-                      <input v-model="editRecord.firstname" type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Middle Name</label>
-                      <input v-model="editRecord.middlename" type="text" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Suffix</label>
-                      <input v-model="editRecord.suffix" type="text" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Age</label>
-                      <input v-model.number="editRecord.age" type="number" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Birthdate</label>
-                      <input v-model="editRecord.birthdate" type="date" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Gender</label>
-                      <select v-model="editRecord.gender" class="form-control">
-                        <option value="Male">Male</option>
-                        <option value="Female">Female</option>
-                      </select>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Full name of Mother</label>
-                      <input v-model="editRecord.motherName" type="text" class="form-control">
-                    </div>
-                  </div>
-                  <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @click="showEditModal = false">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                  </div>
-                </form>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">First Name</label>
+                  <input v-model="editRecord.firstname" type="text" class="hs-input" required>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Middle Name</label>
+                  <input v-model="editRecord.middlename" type="text" class="hs-input">
+                </div>
               </div>
-            </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Suffix</label>
+                  <input v-model="editRecord.suffix" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Age</label>
+                  <input v-model.number="editRecord.age" type="number" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Birthdate</label>
+                  <input v-model="editRecord.birthdate" type="date" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Gender</label>
+                  <select v-model="editRecord.gender" class="hs-select">
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Full name of Mother</label>
+                  <input v-model="editRecord.motherName" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-modal-footer hs-modal-footer--flat">
+                <button type="button" class="hs-btn hs-btn-secondary" @click="showEditModal = false">Cancel</button>
+                <button type="submit" class="hs-btn hs-btn-primary">Save Changes</button>
+              </div>
+            </form>
           </div>
         </div>
+      </div>
 
-        <div v-if="showReport" class="records-overlay">
-          <div class="records-box d-flex flex-column align-items-center">
-            <button class="back-btn align-self-start" @click="closeReport">← back</button>
-            <button class="export-small-btn" @click="exportreportPdf" title="Export PDF">⤓</button>
-            <div ref="reportRef" class="report-container py-4 bg-white shadow rounded">
-              <ChildcareExport/>
-            </div>
+      <!-- Report overlay -->
+      <div v-if="showReport" class="hs-modal-overlay">
+        <div class="report-wrapper">
+          <div class="report-actions">
+            <button class="hs-btn hs-btn-secondary" @click="closeReport"><span class="mdi mdi-arrow-left"></span> Back</button>
+            <button class="hs-btn hs-btn-primary" @click="exportreportPdf"><span class="mdi mdi-download"></span> Export PDF</button>
+          </div>
+          <div ref="reportRef" class="report-container">
+            <ChildcareExport/>
           </div>
         </div>
-
       </div>
     </div>
-  </DashboardView>
 </template>
 
 <style scoped>
-.childcare-bg {
-  background: url('/images/childcare.jpg') no-repeat center center;
-  background-size: cover;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.modal { overflow-y: auto }
-
-.records-top { align-items: center }
-.search-box { max-width: 540px }
-.search-input { border-radius: 28px 0 0 28px }
-.search-btn { border-radius: 0 28px 28px 0 }
-.table-wrapper { border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.95); }
-.table-wrapper { height: calc(100vh - 260px); display: flex; flex-direction: column; }
-.table-responsive.large-table { flex: 1 1 auto; height: 100%; overflow: auto }
-.large-table table { font-size: 1.05rem; margin-bottom: 0 }
-.large-table thead th { padding: 1rem; font-size: 1rem; position: sticky; top: 0; background: #fff; z-index: 5 }
-.large-table tbody td { padding: 0.9rem }
-
-@media (max-width: 768px) {
-  .search-box { max-width: 100% }
-  .large-table thead th { font-size: 0.95rem }
-}
-
-.records-overlay {
-  position: fixed;
-  top: 22px;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  padding: 2rem;
-}
-.records-box {
-  background: rgba(162, 163, 160, 0.65);
-  padding: 3rem 4rem;
-  border-radius: 1rem;
-  max-width: 1300px;
-  width: 100%;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2rem;
-}
-.back-btn {
-  position: absolute;
-  top: 100px;
-  left: -50px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-weight: bold;
-  color: #000;
-  font-size: 1.35rem;
-  padding: 0.5rem 0.9rem;
-  cursor: pointer;
-  transition: transform 0.2s;
-  z-index: 2001;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-.back-btn:hover {
-  transform: scale(1.1);
-}
-.report-container {
-  max-width: 1100px;
-  padding-left: 3rem;
-  padding-right: 3rem;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.export-small-btn {
-  position: absolute;
-  top: 100px;
-  right: 12px;
-  background-color: rgba(43, 122, 11, 0.95);
-  color: #fff;
-  border: none;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 1rem;
-  line-height: 1;
-  min-width: 48px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2001;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-.export-small-btn:hover { background-color: #236008 }
-
-/* Prevent breaking inside important blocks when printing */
-.no-break, .report-container * {
-  -webkit-column-break-inside: avoid;
-  page-break-inside: avoid;
-  break-inside: avoid;
-}
-
-@media print {
-  .records-overlay { background: #fff !important; }
-  .records-box { box-shadow: none !important; background: #fff !important; }
-  .report-container { max-height: none !important; overflow: visible !important; }
-  .back-btn, .export-btn { display: none !important; }
-}
+.service-page { max-width: var(--hs-content-max-width); }
+.report-wrapper { background: var(--hs-white); border-radius: var(--hs-radius-lg); max-width: 1200px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 24px; }
+.report-actions { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.report-container { max-width: 1100px; margin: 0 auto; }
 </style>

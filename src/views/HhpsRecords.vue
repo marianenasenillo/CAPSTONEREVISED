@@ -3,7 +3,8 @@ import DashboardView from '@/components/DashboardView.vue'
 import Hhpsexport from '@/components/reports/Hhpsexport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { usePagination } from '@/composables/usePagination'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 
@@ -45,7 +46,7 @@ const filteredRecords = computed(() => {
   let records = headRecords.value
   const q = String(searchQuery.value || '').trim()
   if (q) {
-    records = records.filter(r => 
+    records = records.filter(r =>
       String(r.head_id).toLowerCase().includes(q.toLowerCase()) ||
       String(r.lastname).toLowerCase().includes(q.toLowerCase())
     )
@@ -56,9 +57,11 @@ const filteredRecords = computed(() => {
   return records
 })
 
+const { currentPage, itemsPerPage, itemsPerPageOptions, totalItems, totalPages, paginatedData, startIndex, endIndex, visiblePages, goToPage, nextPage, prevPage, firstPage, lastPage, resetPage } = usePagination(filteredRecords)
+
+watch([searchQuery, selectedPurok], () => resetPage())
+
 const handleSearch = () => {
-  // computed `filteredRecords` will react to `searchQuery`; keep placeholder for possible analytics or focus behavior
-  // we can also scroll table to top when searching
   const el = document.querySelector('.table-responsive.large-table')
   if (el) el.scrollTop = 0
 }
@@ -67,7 +70,6 @@ const fetchHeadRecords = async () => {
   loading.value = true
   error.value = null
   try {
-    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError) throw userError
     if (!user) throw new Error('Not authenticated')
@@ -95,13 +97,11 @@ const fetchHeadRecords = async () => {
   }
 }
 
-// View Members
 const viewMembers = async (head) => {
   selectedHead.value = head
   showMembersModal.value = true
   members.value = []
   try {
-    // ✅ Adjust this based on your real column name
     const { data, error: err } = await supabase
       .from('household_members')
       .select('*')
@@ -115,14 +115,12 @@ const viewMembers = async (head) => {
   }
 }
 
-// Delete Record
 const deleteRecord = async (record) => {
   if (!confirm(`Are you sure you want to delete the household head "${record.firstname} ${record.lastname}" and all associated members? This action cannot be undone.`)) {
     return
   }
 
   try {
-    // First delete all members
     const { error: membersError } = await supabase
       .from('household_members')
       .delete()
@@ -130,7 +128,6 @@ const deleteRecord = async (record) => {
 
     if (membersError) throw membersError
 
-    // Then delete the head
     const { error: headError } = await supabase
       .from('household_heads')
       .delete()
@@ -146,7 +143,6 @@ const deleteRecord = async (record) => {
   }
 }
 
-// Archive Record
 const archiveRecord = async (record) => {
   if (!confirm(`Are you sure you want to archive the household head "${record.firstname} ${record.lastname}"?`)) {
     return
@@ -171,7 +167,6 @@ const archiveRecord = async (record) => {
   }
 }
 
-// Edit Record
 const editRecord = (record) => {
   editHead.value = { ...record }
   showEditModal.value = true
@@ -205,7 +200,6 @@ const saveEdit = async () => {
   }
 }
 
-// Export PDF function
 const exportPdf = async () => {
   const element = document.querySelector('.large-table')
   if (!element) {
@@ -214,7 +208,6 @@ const exportPdf = async () => {
   }
 
   try {
-    // Temporarily expand the container to show all content
     const wrapper = element.closest('.table-wrapper')
     let originalHeight = ''
     let originalOverflow = ''
@@ -239,7 +232,6 @@ const exportPdf = async () => {
       backgroundColor: '#ffffff'
     })
 
-    // Restore styles
     if (wrapper) {
       wrapper.style.height = originalHeight
       wrapper.style.overflow = originalOverflow
@@ -278,13 +270,11 @@ const exportreportPdf = async () => {
   if (!reportRef.value) return
   const element = reportRef.value
 
-  // temporarily remove max-height/overflow so entire content is captured
   const originalOverflow = element.style.overflow
   const originalMaxHeight = element.style.maxHeight
   element.style.overflow = 'visible'
   element.style.maxHeight = 'none'
 
-  // Temporarily reduce logo sizes for PDF export
   const logos = element.querySelectorAll('img[alt="Province Logo"], img[alt="Barangay Logo"]')
   const originalSizes = []
   const originalMargins = []
@@ -298,11 +288,9 @@ const exportreportPdf = async () => {
     }
   })
 
-  // Render element to canvas at higher scale for better quality
   const canvas = await html2canvas(element, { scale: 2, useCORS: true })
   const imgData = canvas.toDataURL('image/png')
 
-  // Restore logo sizes
   logos.forEach((img, index) => {
     img.style.height = originalSizes[index]
     if (img.alt === 'Province Logo') {
@@ -311,12 +299,10 @@ const exportreportPdf = async () => {
     }
   })
 
-  // A4 size in mm
   const pdf = new jsPDF('p', 'mm', 'a4')
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
-  // Convert canvas pixel size to mm for jsPDF
   const pxPerMm = canvas.width / (pageWidth * (window.devicePixelRatio || 1))
   const imgWidthMm = pageWidth
   const imgHeightMm = (canvas.height / pxPerMm) / (window.devicePixelRatio || 1)
@@ -324,380 +310,266 @@ const exportreportPdf = async () => {
   let remainingHeight = imgHeightMm
   let position = 0
 
-  // Add image slices per page
   while (remainingHeight > 0) {
     pdf.addImage(imgData, 'PNG', 0, position, imgWidthMm, imgHeightMm)
     remainingHeight -= pageHeight
     if (remainingHeight > 0) pdf.addPage()
-    // next page position: shift the image up by pageHeight (negative)
     position -= pageHeight
   }
 
   pdf.save('report.pdf')
 
-  // restore styles
   element.style.overflow = originalOverflow
   element.style.maxHeight = originalMaxHeight
 }
 </script>
 
-
 <template>
   <DashboardView>
-    <div class="hps-bg">
-      <div class="container">
-        <div class="records-top d-flex align-items-center mb-2">
-          <button class="btn btn-outline-secondary me-3" style="background-color: #5b841e; color: white; border-color: #5b841e;" @click="goBack">← Back</button>
-          <h3 class="mb-0">Household Head Profiling Records</h3>
-          <div class="ms-auto search-box">
-            <div class="input-group">
-              <button class="btn btn-primary export-btn" @click="exportPdf">Export</button>
-              <input v-model="searchQuery" @keyup.enter="handleSearch" type="search" class="form-control search-input" placeholder="Search by Head ID or Last Name..." aria-label="Search by Head ID or Last Name">
-              <button class="btn btn-primary search-btn" @click="handleSearch">Search</button>
-              <button class="btn btn-outline-secondary ms-2" v-if="searchQuery" @click="searchQuery = ''">Clear</button>
-              <button v-if="userRole === 'Admin'" class="btn btn-warning report-btn" @click="router.push('/hhpsarchived')">Archived</button>
-              <button v-if="userRole === 'Admin'" class="btn view-btn btn-primary report-btn" @click="openReport" >Report</button>
+    <div class="service-page">
+      <div class="hs-page-header">
+        <div class="hs-breadcrumb">Dashboard / Household Profiling / Records</div>
+        <h1>Household Head Records</h1>
+      </div>
+
+      <div class="hs-toolbar">
+        <div class="hs-toolbar-left">
+          <button class="hs-btn hs-btn-secondary" @click="goBack"><span class="mdi mdi-arrow-left"></span> Back</button>
+          <select v-model="selectedPurok" class="hs-select" style="width:auto;">
+            <option value="">Purok</option>
+            <option value="Purok 1">Purok 1</option>
+            <option value="Purok 2">Purok 2</option>
+            <option value="Purok 3">Purok 3</option>
+            <option value="Purok 4">Purok 4</option>
+          </select>
+        </div>
+        <div class="hs-toolbar-right">
+          <div class="hs-search-box">
+              <span class="mdi mdi-magnify"></span>
+              <input v-model="searchQuery" type="search" placeholder="Search..." />
             </div>
-            <div v-if="showReport" class="records-overlay">
-        <div class="records-box d-flex flex-column align-items-center">
-          <!-- back button (left) and a compact export button (top-right) positioned absolutely so they don't affect layout -->
-          <button class="back-btn align-self-start" @click="closeReport">← back</button>
-          <button class="export-small-btn" @click="exportreportPdf" title="Export PDF">⤓</button>
-          <div ref="reportRef" class="report-container py-4 bg-white shadow rounded">
-            <Hhpsexport/>
-            
+          <button class="hs-btn hs-btn-primary" @click="exportPdf"><span class="mdi mdi-file-export-outline"></span> Export</button>
+          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning" @click="router.push('/hhpsarchived')"><span class="mdi mdi-archive-outline"></span> Archived</button>
+          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
+        </div>
+      </div>
+
+      <div v-if="loading" class="hs-empty-state"><div class="hs-spinner"></div><p>Loading records...</p></div>
+      <div v-else-if="error" class="hs-card" style="border-left:4px solid var(--hs-danger);padding:16px;color:var(--hs-danger);">{{ error }}</div>
+      <div v-else class="hs-card" style="padding:0;overflow:hidden;">
+        <div style="overflow-x:auto;max-height:calc(100vh - 320px);">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>Head ID</th>
+                <th>Purok</th>
+                <th>Last Name</th>
+                <th>First Name</th>
+                <th>Middle Name</th>
+                <th>Suffix</th>
+                <th>No. of Families</th>
+                <th>Population</th>
+                <th>Female</th>
+                <th>Male</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in paginatedData" :key="record.head_id">
+                <td>{{ record.head_id }}</td>
+                <td>{{ record.purok }}</td>
+                <td>{{ record.lastname }}</td>
+                <td>{{ record.firstname }}</td>
+                <td>{{ record.middlename }}</td>
+                <td>{{ record.suffix }}</td>
+                <td>{{ record.no_of_families }}</td>
+                <td>{{ record.population }}</td>
+                <td>{{ record.female_count }}</td>
+                <td>{{ record.male_count }}</td>
+                <td>
+                  <v-menu :model-value="showActionsDropdown === record.head_id" @update:model-value="val => val ? showActionsDropdown = record.head_id : showActionsDropdown = null" offset-y>
+                    <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>
+                    <v-list>
+                      <v-list-item @click="viewMembers(record)">View Members</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW'" @click="editRecord(record)">Edit</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
+                    </v-list>
+                  </v-menu>
+                </td>
+              </tr>
+              <tr v-if="filteredRecords.length === 0"><td colspan="11" style="text-align:center;padding:32px;color:var(--hs-gray-400);">No records found.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="hs-pagination">
+          <div class="hs-pagination-info">
+            <span>Show</span>
+            <select v-model.number="itemsPerPage">
+              <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+            <span>entries &mdash; {{ startIndex }}-{{ endIndex }} of {{ totalItems }}</span>
+          </div>
+          <div class="hs-pagination-controls">
+            <button @click="firstPage" :disabled="currentPage === 1"><span class="mdi mdi-chevron-double-left"></span></button>
+            <button @click="prevPage" :disabled="currentPage === 1"><span class="mdi mdi-chevron-left"></span></button>
+            <button v-for="p in visiblePages" :key="p" :class="{ active: p === currentPage }" @click="goToPage(p)">{{ p }}</button>
+            <button @click="nextPage" :disabled="currentPage === totalPages"><span class="mdi mdi-chevron-right"></span></button>
+            <button @click="lastPage" :disabled="currentPage === totalPages"><span class="mdi mdi-chevron-double-right"></span></button>
           </div>
         </div>
       </div>
+
+      <!-- Members Modal -->
+      <div v-if="showMembersModal" class="hs-modal-overlay" @click.self="showMembersModal = false">
+        <div class="hs-modal" style="max-width:95vw;">
+          <div class="hs-modal-header">
+            <h3>Members of: {{ selectedHead.firstname }} {{ selectedHead.lastname }}</h3>
+            <button class="hs-modal-close" @click="showMembersModal = false">&times;</button>
           </div>
-        </div>
-
-        <div v-if="loading" class="text-center my-4">
-          <div class="spinner-border text-primary" role="status"></div>
-          <p>Loading records...</p>
-        </div>
-
-        <div v-else-if="error" class="alert alert-danger">
-          {{ error }}
-        </div>
-
-        <div v-else>
-                <div class="table-wrapper">
-                  <div class="table-responsive large-table">
-              <table class="table table-bordered table-striped mb-0">
-                <thead class="table-light">
+          <div class="hs-modal-body">
+            <div v-if="members.length === 0" style="text-align:center;padding:24px;">
+              <p>No members found for this head.</p>
+            </div>
+            <div v-else style="overflow-x:auto;">
+              <table class="hs-table">
+                <thead>
                   <tr>
-                    <th>Head ID</th>
-                    <th><select v-model="selectedPurok" class="form-select me-2" style="max-width: 150px;">
-                <option value="">Purok</option>
-                <option value="Purok 1">Purok 1</option>
-                <option value="Purok 2">Purok 2</option>
-                <option value="Purok 3">Purok 3</option>
-                <option value="Purok 4">Purok 4</option>
-              </select></th>
                     <th>Last Name</th>
                     <th>First Name</th>
                     <th>Middle Name</th>
-                    <th>Suffix</th>
-                    <th>No. of Families</th>
-                    <th>Population</th>
-                    <th>Female</th>
-                    <th>Male</th>
-                    <th>Actions</th>
+                    <th>Relationship</th>
+                    <th>Birthdate</th>
+                    <th>Age</th>
+                    <th>Sex</th>
+                    <th>Civil Status</th>
+                    <th>Education</th>
+                    <th>Religion</th>
+                    <th>Ethnicity</th>
+                    <th>PhilHealth ID</th>
+                    <th>4Ps Member</th>
+                    <th>FP Method</th>
+                    <th>Medical History</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="record in filteredRecords" :key="record.head_id">
-                    <td>{{ record.head_id }}</td>
-                    <td>{{ record.purok }}</td>
-                    <td>{{ record.lastname }}</td>
-                    <td>{{ record.firstname }}</td>
-                    <td>{{ record.middlename }}</td>
-                    <td>{{ record.suffix }}</td>
-                    <td>{{ record.no_of_families }}</td>
-                    <td>{{ record.population }}</td>
-                    <td>{{ record.female_count }}</td>
-                    <td>{{ record.male_count }}</td>
-                    <td>
-                      <v-menu :model-value="showActionsDropdown === record.head_id" @update:model-value="val => val ? showActionsDropdown = record.head_id : showActionsDropdown = null" offset-y>
-                        <template #activator="{ props }">
-                          <v-btn icon v-bind="props" size="small">
-                            <v-icon>mdi-dots-vertical</v-icon>
-                          </v-btn>
-                        </template>
-                        <v-list>
-                          <v-list-item @click="viewMembers(record)">View Members</v-list-item>
-                          <v-list-item v-if="userRole === 'BHW'" @click="editRecord(record)">Edit</v-list-item>
-                          <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
-                          <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
-                        </v-list>
-                      </v-menu>
-                    </td>
-                  </tr>
-
-                  <tr v-if="filteredRecords.length === 0">
-                    <td colspan="11" class="text-center">No records found.</td>
+                  <tr v-for="m in members" :key="m.member_id">
+                    <td>{{ m.lastname }}</td>
+                    <td>{{ m.firstname }}</td>
+                    <td>{{ m.middlename }}</td>
+                    <td>{{ m.relationship }}</td>
+                    <td>{{ m.birthdate }}</td>
+                    <td>{{ m.age }}</td>
+                    <td>{{ m.sex }}</td>
+                    <td>{{ m.civil_status }}</td>
+                    <td>{{ m.education }}</td>
+                    <td>{{ m.religion }}</td>
+                    <td>{{ m.ethnicity }}</td>
+                    <td>{{ m.philhealth_id || '-' }}</td>
+                    <td>{{ m.is_4ps_member ? 'Yes' : 'No' }}</td>
+                    <td>{{ m.fp_method_used || '-' }}</td>
+                    <td>{{ m.medical_history || '-' }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
-        </div>
-
-        <!-- Modal for Members -->
-        <div class="modal fade show d-block" tabindex="-1" v-if="showMembersModal" style="background: rgba(0,0,0,0.6)">
-          <div class="modal-dialog modal-xl" style="max-width: 95vw; top: 100px;">
-            <div class="modal-content" style="max-width: 95vw;">
-              <div class="modal-header">
-                <h5 class="modal-title">Members of: {{ selectedHead.firstname }} {{ selectedHead.lastname }}</h5>
-                <button type="button" class="btn-close" @click="showMembersModal = false"></button>
-              </div>
-              <div class="modal-body">
-                <div v-if="members.length === 0" class="text-center py-3">
-                  <p>No members found for this head.</p>
-                </div>
-
-                <div v-else class="table-responsive">
-                  <table class="table table-bordered table-sm mb-0">
-                    <thead class="table-light">
-                      <tr>
-                        <th>Last Name</th>
-                        <th>First Name</th>
-                        <th>Middle Name</th>
-                        <th>Relationship</th>
-                        <th>Birthdate</th>
-                        <th>Age</th>
-                        <th>Sex</th>
-                        <th>Civil Status</th>
-                        <th>Education</th>
-                        <th>Religion</th>
-                        <th>Ethnicity</th>
-                        <th>PhilHealth ID</th>
-                        <th>4PS Member</th>
-                        <th>FP Method</th>
-                        <th>Medical History</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="m in members" :key="m.member_id">
-                        <td>{{ m.lastname }}</td>
-                        <td>{{ m.firstname }}</td>
-                        <td>{{ m.middlename }}</td>
-                        <td>{{ m.relationship }}</td>
-                        <td>{{ m.birthdate }}</td>
-                        <td>{{ m.age }}</td>
-                        <td>{{ m.sex }}</td>
-                        <td>{{ m.civil_status }}</td>
-                        <td>{{ m.education }}</td>
-                        <td>{{ m.religion }}</td>
-                        <td>{{ m.ethnicity }}</td>
-                        <td>{{ m.philhealth_id || '-' }}</td>
-                        <td>{{ m.is_4ps_member ? 'Yes' : 'No' }}</td>
-                        <td>{{ m.fp_method_used || '-' }}</td>
-                        <td>{{ m.medical_history || '-' }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button class="btn btn-secondary" @click="showMembersModal = false">Close</button>
-              </div>
-            </div>
+          <div class="hs-modal-footer">
+            <button class="hs-btn hs-btn-secondary" @click="showMembersModal = false">Close</button>
           </div>
         </div>
+      </div>
 
-        <!-- Modal for Editing Head -->
-        <div class="modal fade show d-block" tabindex="-1" v-if="showEditModal" style="background: rgba(0,0,0,0.6)">
-          <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title">Edit Household Head: {{ editHead.firstname }} {{ editHead.lastname }}</h5>
-                <button type="button" class="btn-close" @click="showEditModal = false"></button>
+      <!-- Edit Modal -->
+      <div v-if="showEditModal" class="hs-modal-overlay" @click.self="showEditModal = false">
+        <div class="hs-modal hs-modal-lg">
+          <div class="hs-modal-header">
+            <h3>Edit Household Head: {{ editHead.firstname }} {{ editHead.lastname }}</h3>
+            <button class="hs-modal-close" @click="showEditModal = false">&times;</button>
+          </div>
+          <div class="hs-modal-body">
+            <form @submit.prevent="saveEdit">
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Purok</label>
+                  <select v-model="editHead.purok" class="hs-select" required>
+                    <option value="Purok 1">Purok 1</option>
+                    <option value="Purok 2">Purok 2</option>
+                    <option value="Purok 3">Purok 3</option>
+                    <option value="Purok 5">Purok 5</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Last Name</label>
+                  <input v-model="editHead.lastname" type="text" class="hs-input" required>
+                </div>
               </div>
-              <div class="modal-body">
-                <form @submit.prevent="saveEdit">
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label>Purok</label>
-                      <select v-model="editHead.purok" class="form-control" required>
-                        <option value="Purok 1">Purok 1</option>
-                        <option value="Purok 2">Purok 2</option>
-                        <option value="Purok 3">Purok 3</option>
-                        <option value="Purok 5">Purok 5</option>
-                      </select>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Last Name</label>
-                      <input v-model="editHead.lastname" type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>First Name</label>
-                      <input v-model="editHead.firstname" type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Middle Name</label>
-                      <input v-model="editHead.middlename" type="text" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Suffix</label>
-                      <input v-model="editHead.suffix" type="text" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>No. of Families</label>
-                      <input v-model.number="editHead.no_of_families" type="number" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Population</label>
-                      <input v-model.number="editHead.population" type="number" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Female Count</label>
-                      <input v-model.number="editHead.female_count" type="number" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label>Male Count</label>
-                      <input v-model.number="editHead.male_count" type="number" class="form-control">
-                    </div>
-                  </div>
-                  <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @click="showEditModal = false">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                  </div>
-                </form>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">First Name</label>
+                  <input v-model="editHead.firstname" type="text" class="hs-input" required>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Middle Name</label>
+                  <input v-model="editHead.middlename" type="text" class="hs-input">
+                </div>
               </div>
-            </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Suffix</label>
+                  <input v-model="editHead.suffix" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">No. of Families</label>
+                  <input v-model.number="editHead.no_of_families" type="number" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Population</label>
+                  <input v-model.number="editHead.population" type="number" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Female Count</label>
+                  <input v-model.number="editHead.female_count" type="number" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Male Count</label>
+                  <input v-model.number="editHead.male_count" type="number" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-modal-footer" style="border:none;padding:var(--hs-space-4) 0 0;">
+                <button type="button" class="hs-btn hs-btn-secondary" @click="showEditModal = false">Cancel</button>
+                <button type="submit" class="hs-btn hs-btn-primary">Save Changes</button>
+              </div>
+            </form>
           </div>
         </div>
+      </div>
 
+      <!-- Report overlay -->
+      <div v-if="showReport" class="hs-modal-overlay">
+        <div class="report-wrapper">
+          <div class="report-actions">
+            <button class="hs-btn hs-btn-secondary" @click="closeReport"><span class="mdi mdi-arrow-left"></span> Back</button>
+            <button class="hs-btn hs-btn-primary" @click="exportreportPdf"><span class="mdi mdi-download"></span> Export PDF</button>
+          </div>
+          <div ref="reportRef" class="report-container">
+            <Hhpsexport/>
+          </div>
+        </div>
       </div>
     </div>
   </DashboardView>
 </template>
 
 <style scoped>
-.hps-bg {
-  background: url('/images/householdprofiling.jpg') no-repeat center center;
-  background-size: cover;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.modal {
-  overflow-y: auto;
-}
-
-.records-top { align-items: center }
-.search-box { max-width: 540px }
-.search-input { border-radius: 28px 0 0 28px }
-.search-btn { border-radius: 0 28px 28px 0 }
-.table-wrapper { border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.95); }
-/* Make the table-wrapper take the remaining vertical space and keep internal scrolling in the table only */
-.table-wrapper { height: calc(100vh - 260px); display: flex; flex-direction: column; }
-.table-responsive.large-table { flex: 1 1 auto; height: 100%; overflow: auto; }
-.large-table table { font-size: 1.05rem; margin-bottom: 0 }
-.large-table thead th { padding: 1rem; font-size: 1rem; position: sticky; top: 0; background: #fff; z-index: 5 }
-.large-table tbody td { padding: 0.9rem }
-
-@media (max-width: 768px) {
-  .search-box { max-width: 100% }
-  .large-table thead th { font-size: 0.95rem }
-}
-
-.records-overlay {
-  position: fixed;
-  top: 20px;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  padding: 2rem;
-}
-.records-box {
-  background: rgba(162, 163, 160, 0.65);
-  padding: 3rem 4rem;
-  border-radius: 1rem;
-  max-width: 1300px;
-  width: 100%;
-  height: 600px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2rem;
-}
-.back-btn {
-  position: absolute;
-  top: 100px;
-  left: -50px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-weight: bold;
-  color: #000;
-  font-size: 1.35rem;
-  padding: 0.5rem 0.9rem;
-  cursor: pointer;
-  transition: transform 0.2s;
-  z-index: 2001;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-.back-btn:hover {
-  transform: scale(1.1);
-}
-.report-container {
-  max-width: 1100px;
-  padding-left: 3rem;
-  padding-right: 3rem;
-  max-height: 80vh;      /* NEW: limit height */
-  overflow-y: auto;      /* NEW: enable vertical scroll */
-}
-
-.export-small-btn {
-  position: absolute;
-  top: 100px;
-  right: 12px;
-  background-color: rgba(43, 122, 11, 0.95);
-  color: #fff;
-  border: none;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 1rem;
-  line-height: 1;
-  min-width: 48px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2001;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-.export-small-btn:hover { background-color: #236008 }
-
-/* Prevent breaking inside important blocks when printing */
-.no-break, .report-container * {
-  -webkit-column-break-inside: avoid;
-  page-break-inside: avoid;
-  break-inside: avoid;
-}
-
-
-
-@media print {
-  .records-overlay { background: #fff !important; }
-  .records-box { box-shadow: none !important; background: #fff !important; }
-  .report-container { max-height: none !important; overflow: visible !important; }
-  .back-btn, .export-btn { display: none !important; }
-}
+.service-page { max-width: var(--hs-content-max-width); }
+.report-wrapper { background: var(--hs-white); border-radius: var(--hs-radius-lg); max-width: 1200px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 24px; }
+.report-actions { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.report-container { max-width: 1100px; margin: 0 auto; }
 </style>

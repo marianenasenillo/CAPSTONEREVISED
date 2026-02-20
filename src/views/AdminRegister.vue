@@ -20,7 +20,6 @@ const purok = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 
-// errors
 const firstNameError = ref('')
 const lastNameError = ref('')
 const emailError = ref('')
@@ -35,11 +34,9 @@ const errorMessage = ref('')
 const showSuccessSnackbar = ref(false)
 const showErrorSnackbar = ref(false)
 
-// options
 const barangayOptions = ['Barangay 5', 'Barangay 6']
 const purokOptions = ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4']
 
-// validate form fields
 const validateForm = () => {
   let isValid = true
 
@@ -100,10 +97,9 @@ const handleRegister = async () => {
     if (error) throw error
 
     successMessage.value =
-      '✅ Registration successful! Please check your email to confirm your account.'
+      'Registration successful! Please check your email to confirm your account.'
     showSuccessSnackbar.value = true
 
-    // reset fields
     firstName.value = ''
     lastName.value = ''
     email.value = ''
@@ -112,7 +108,7 @@ const handleRegister = async () => {
     password.value = ''
     confirmPassword.value = ''
 
-    // ⏳ wait 5 seconds, then redirect to '/'
+    // wait 5 seconds, then redirect to '/'
     setTimeout(() => {
       router.push('/')
     }, 5000)
@@ -127,204 +123,217 @@ const handleRegister = async () => {
 </script>
 
 <template>
-  <v-app class="yellow-background">
-    <v-app-bar app color="#5b841e" height="90" class="d-flex align-center px-4" />
+  <div class="auth-page">
+    <div class="auth-container">
+      <!-- Registration form -->
+      <div class="auth-form-panel">
+        <div class="auth-form-card auth-form-card-wide">
+          <div class="auth-form-header">
+            <img src="/images/logo.png" alt="HealthSync" class="auth-form-logo" />
+            <h2>Create Admin Account</h2>
+            <p>Fill in the details below to register</p>
+            <div class="auth-header-accent"></div>
+          </div>
 
-    <v-main class="main-no-scroll">
-      <v-container fluid>
-        <v-row class="fill-height d-flex align-center justify-center">
-          <v-col cols="12" md="7" class="hide-on-mobile">
-            <v-card
-              class="pa-7 flex-grow-1 d-flex align-center justify-center"
-              height="472"
-              elevation="4"
-              color="#fff9c4"
+          <!-- Success / Error messages -->
+          <div v-if="successMessage" class="hs-alert hs-alert-success">{{ successMessage }}</div>
+          <div v-if="errorMessage" class="hs-alert hs-alert-error">{{ errorMessage }}</div>
+
+          <div class="hs-form-row">
+            <div class="hs-form-group">
+              <label class="hs-label">First Name</label>
+              <input v-model="firstName" type="text" class="hs-input" placeholder="First name" />
+              <span v-if="firstNameError && firstNameError !== true" class="hs-form-error">{{ firstNameError }}</span>
+            </div>
+            <div class="hs-form-group">
+              <label class="hs-label">Last Name</label>
+              <input v-model="lastName" type="text" class="hs-input" placeholder="Last name" />
+              <span v-if="lastNameError && lastNameError !== true" class="hs-form-error">{{ lastNameError }}</span>
+            </div>
+          </div>
+
+          <div class="hs-form-row">
+            <div class="hs-form-group">
+              <label class="hs-label">Email Address</label>
+              <input v-model="email" type="email" class="hs-input" placeholder="you@example.com" />
+              <span v-if="emailError && emailError !== true" class="hs-form-error">{{ emailError }}</span>
+            </div>
+            <div class="hs-form-group">
+              <label class="hs-label">Role</label>
+              <input :value="role" type="text" class="hs-input input-readonly" readonly />
+            </div>
+          </div>
+
+          <div class="hs-form-row">
+            <div class="hs-form-group">
+              <label class="hs-label">Barangay</label>
+              <select v-model="barangay" class="hs-select">
+                <option value="" disabled>Select barangay</option>
+                <option v-for="b in barangayOptions" :key="b" :value="b">{{ b }}</option>
+              </select>
+              <span v-if="barangayError && barangayError !== true" class="hs-form-error">{{ barangayError }}</span>
+            </div>
+            <div class="hs-form-group">
+              <label class="hs-label">Purok</label>
+              <select v-model="purok" class="hs-select">
+                <option value="" disabled>Select purok</option>
+                <option v-for="p in purokOptions" :key="p" :value="p">{{ p }}</option>
+              </select>
+              <span v-if="purokError && purokError !== true" class="hs-form-error">{{ purokError }}</span>
+            </div>
+          </div>
+
+          <div class="hs-form-row">
+            <div class="hs-form-group">
+              <label class="hs-label">Password</label>
+              <input v-model="password" type="password" class="hs-input" placeholder="Create password" />
+              <span v-if="passwordError && passwordError !== true" class="hs-form-error">{{ passwordError }}</span>
+            </div>
+            <div class="hs-form-group">
+              <label class="hs-label">Confirm Password</label>
+              <input v-model="confirmPassword" type="password" class="hs-input" placeholder="Confirm password" />
+              <span v-if="confirmPasswordError && confirmPasswordError !== true" class="hs-form-error">{{ confirmPasswordError }}</span>
+            </div>
+          </div>
+
+          <div class="reg-button-row">
+            <button
+              class="hs-btn hs-btn-secondary hs-btn-lg reg-btn-cancel"
+              @click="router.push('/')"
             >
-              <v-img src="/images/logo.png" contain max-width="700" />
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" md="4" class="d-flex justify-center">
-            <v-card
-              class="flex-grow-1 d-flex flex-column justify-center"
-              elevation="4"
-              color="#fff9c4"
-              height="472"
+              Back to Login
+            </button>
+            <button
+              class="hs-btn hs-btn-primary hs-btn-lg reg-btn-submit"
+              :disabled="isLoading"
+              @click="handleRegister"
             >
-              <h3
-                class="text-center font-weight-bold mt-5"
-                style="text-decoration: underline; font-size: 28px; color: #2e4e1f"
-              >
-                USER REGISTRATION
-              </h3>
-              <p class="text-center mb-6" style="color: #2e4e1f">
-                Create your Buenavista HealthSync Admin account
-              </p>
+              <span v-if="isLoading" class="hs-spinner spinner-inline"></span>
+              <span v-else>Create Account</span>
+            </button>
+          </div>
 
-              <v-row class="mx-4 d-flex justify-center">
-                <v-col cols="12" md="5">
-                  <v-text-field
-                    v-model="firstName"
-                    :error-messages="firstNameError !== true ? firstNameError : ''"
-                    label="First Name"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-                  <v-text-field
-                    v-model="email"
-                    :error-messages="emailError !== true ? emailError : ''"
-                    label="Email Address"
-                    type="email"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-                  <v-select
-                    v-model="barangay"
-                    :error-messages="barangayError !== true ? barangayError : ''"
-                    label="Barangay"
-                    :items="barangayOptions"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-                  <v-text-field
-                    v-model="password"
-                    :error-messages="passwordError !== true ? passwordError : ''"
-                    label="Password"
-                    type="password"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-                </v-col>
+          <p class="auth-alt-action">
+            Already have an account?
+            <router-link to="/" class="auth-alt-link">Sign in</router-link>
+          </p>
+        </div>
 
-                <v-col cols="12" md="5">
-                  <v-text-field
-                    v-model="lastName"
-                    :error-messages="lastNameError !== true ? lastNameError : ''"
-                    label="Last Name"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-
-                  <!-- Fixed Admin Role -->
-                  <v-text-field
-                    v-model="role"
-                    label="Role"
-                    readonly
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-
-                  <v-select
-                    v-model="purok"
-                    :error-messages="purokError !== true ? purokError : ''"
-                    label="Purok"
-                    :items="purokOptions"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-                  <v-text-field
-                    v-model="confirmPassword"
-                    :error-messages="confirmPasswordError !== true ? confirmPasswordError : ''"
-                    label="Confirm Password"
-                    type="password"
-                    variant="filled"
-                    bg-color="#5b841e"
-                    color="white"
-                    density="comfortable"
-                    class="text-white"
-                    style="--v-theme-on-surface: white"
-                  />
-                </v-col>
-              </v-row>
-
-              <div class="mx-16 mb-5">
-                <v-btn
-                  block
-                  class="text-white text-lowercase font-weight-bold mb-2"
-                  style="background-color: #5b841e"
-                  :loading="isLoading"
-                  @click="handleRegister"
-                >
-                  register
-                </v-btn>
-
-                <v-btn
-                  block
-                  class="text-white text-lowercase font-weight-bold"
-                  style="background-color: #466a17"
-                  @click="router.push('/')"
-                >
-                  back
-                </v-btn>
-              </div>
-            </v-card>
-          </v-col>
-        </v-row>
-      </v-container>
-    </v-main>
-
-    <v-footer app color="#5b841e" height="90" class="d-flex align-center justify-center">
-      <span class="text-white text-decoration-underline">2025 All Rights Reserved</span>
-    </v-footer>
-
-    <v-snackbar v-model="showSuccessSnackbar" color="success" timeout="5000" top>
-      {{ successMessage }}
-      <template v-slot:action="{ attrs }">
-        <v-btn color="white" text v-bind="attrs" @click="showSuccessSnackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
-
-    <v-snackbar v-model="showErrorSnackbar" color="error" timeout="5000" top>
-      {{ errorMessage }}
-      <template v-slot:action="{ attrs }">
-        <v-btn color="white" text v-bind="attrs" @click="showErrorSnackbar = false">Close</v-btn>
-      </template>
-    </v-snackbar>
-  </v-app>
+        <p class="auth-footer-text">&copy; 2025 Buenavista HealthSync. All Rights Reserved.</p>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.yellow-background {
-  background-color: #ffeb3b;
+.auth-page {
   min-height: 100vh;
-}
-.main-no-scroll {
-  min-height: calc(100vh - 90px - 90px);
+  background: linear-gradient(135deg, #f4f9ec 0%, var(--hs-gray-50) 40%, var(--hs-gray-50) 60%, #f4f9ec 100%);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-@media (max-width: 1264px) {
-  .hide-on-mobile {
-    display: none !important;
-  }
+.auth-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}
+.auth-form-panel {
+  width: 520px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 36px 10px 36px;
+  background: var(--hs-white);
+  border-radius: var(--hs-radius-xl);
+  box-shadow: var(--hs-shadow-lg);
+  border-top: 3px solid var(--hs-primary);
+  overflow-y: auto;
+}
+.auth-form-card-wide {
+  width: 100%;
+  max-width: 440px;
+}
+.auth-form-header {
+  text-align: center;
+  margin-bottom: 16px;
+  margin-top: -40px;
+}
+
+.auth-form-logo {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  margin-bottom: -15px;
+}
+.auth-form-header h2 {
+  font-size: var(--hs-font-size-2xl);
+  font-weight: 600;
+  color: var(--hs-gray-900);
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+.auth-form-header p {
+  font-size: var(--hs-font-size-base);
+  color: var(--hs-gray-500);
+}
+.auth-header-accent {
+  width: 40px;
+  height: 3px;
+  background: var(--hs-primary);
+  border-radius: 2px;
+  margin: 14px auto 0;
+}
+.auth-alt-action {
+  text-align: center;
+  font-size: var(--hs-font-size-sm);
+  color: var(--hs-gray-500);
+  margin-top: var(--hs-space-5);
+}
+.auth-alt-link {
+  color: var(--hs-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-alt-link:hover {
+  text-decoration: underline;
+}
+.input-readonly { background: var(--hs-gray-50); cursor: not-allowed; }
+.reg-button-row { display: flex; gap: var(--hs-space-3); margin-top: var(--hs-space-2); }
+.reg-btn-cancel { flex: 1; }
+.reg-btn-submit { flex: 2; }
+.spinner-inline { width: var(--hs-space-4); height: var(--hs-space-4); border-width: 2px; }
+.auth-footer-text {
+  margin-top: auto;
+  padding-top: 28px;
+  font-size: var(--hs-font-size-xs);
+  color: var(--hs-gray-400);
+}
+.hs-alert {
+  padding: 8px 12px;
+  border-radius: var(--hs-radius-md);
+  font-size: var(--hs-font-size-xs);
+  margin-bottom: 12px;
+}
+.hs-alert-success {
+  background: var(--hs-success-bg);
+  color: var(--hs-success);
+  border: 1px solid var(--hs-success-border);
+}
+.hs-alert-error {
+  background: var(--hs-danger-bg);
+  color: var(--hs-danger);
+  border: 1px solid var(--hs-danger-border);
+}
+@media (max-width: 1024px) {
+  .auth-page { background: var(--hs-white); }
+  .auth-form-panel { width: 100%; min-width: 0; min-height: 100vh; border-radius: 0; box-shadow: none; border-top: none; }
+}
+@media (max-width: 480px) {
+  .auth-form-panel { padding: 24px 20px; }
 }
 </style>
