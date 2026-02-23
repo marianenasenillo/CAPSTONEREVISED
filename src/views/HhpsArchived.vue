@@ -1,11 +1,12 @@
 <script setup>
-import DashboardView from '@/components/DashboardView.vue'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
+import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
 
 const router = useRouter()
+const toast = useToast()
 const goBack = () => router.back()
 
 const loading = ref(true)
@@ -42,7 +43,7 @@ const { currentPage, itemsPerPage, itemsPerPageOptions, totalItems, totalPages, 
 watch([searchQuery, selectedPurok], () => resetPage())
 
 const handleSearch = () => {
-  const el = document.querySelector('.table-responsive.large-table')
+  const el = document.querySelector('.hs-table-scroll')
   if (el) el.scrollTop = 0
 }
 
@@ -82,13 +83,13 @@ const viewMembers = async (head) => {
     const { data, error: err } = await supabase
       .from('household_members')
       .select('*')
-      .eq('head_id', head.head_id) // if your PK is head_id instead of id
+      .eq('head_id', head.head_id)
 
     if (err) throw err
     members.value = data
   } catch (e) {
     console.error(e)
-    alert('Error loading household members.')
+    toast.error('Error loading household members.')
   }
 }
 
@@ -112,35 +113,11 @@ const deleteRecord = async (record) => {
 
     if (headError) throw headError
 
-    alert('Record and associated members deleted successfully.')
-    await fetchHeadRecords() // Refresh the list
+    toast.success('Record and associated members deleted successfully.')
+    await fetchHeadRecords()
   } catch (e) {
     console.error(e)
-    alert('Error deleting record.')
-  }
-}
-
-const archiveRecord = async (record) => {
-  if (!confirm(`Are you sure you want to archive the household head "${record.firstname} ${record.lastname}"?`)) {
-    return
-  }
-
-  try {
-    const { error } = await supabase
-      .from('household_heads')
-      .update({
-        is_archived: true,
-        archived_at: new Date().toISOString()
-      })
-      .eq('head_id', record.head_id)
-
-    if (error) throw error
-
-    alert('Record archived successfully.')
-    await fetchHeadRecords() // Refresh the list
-  } catch (e) {
-    console.error(e)
-    alert('Error archiving record.')
+    toast.error('Error deleting record.')
   }
 }
 
@@ -160,17 +137,16 @@ const restoreRecord = async (record) => {
 
     if (error) throw error
 
-    alert('Record restored successfully.')
-    await fetchHeadRecords() // Refresh the list
+    toast.success('Record restored successfully.')
+    await fetchHeadRecords()
   } catch (e) {
     console.error(e)
-    alert('Error restoring record.')
+    toast.error('Error restoring record.')
   }
 }
 </script>
 
 <template>
-  <DashboardView>
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">
@@ -184,7 +160,7 @@ const restoreRecord = async (record) => {
       <div class="hs-toolbar">
         <div class="hs-toolbar-left">
           <button class="hs-btn hs-btn-secondary" @click="goBack"><span class="mdi mdi-arrow-left"></span> Back</button>
-          <select v-model="selectedPurok" class="hs-select" style="width:auto;">
+          <select v-model="selectedPurok" class="hs-select hs-w-auto">
             <option value="">All Puroks</option>
             <option value="Purok 1">Purok 1</option>
             <option value="Purok 2">Purok 2</option>
@@ -201,9 +177,9 @@ const restoreRecord = async (record) => {
       </div>
 
       <div v-if="loading" class="hs-empty-state"><div class="hs-spinner"></div><p>Loading...</p></div>
-      <div v-else-if="error" class="hs-card" style="border-left:4px solid var(--hs-danger);padding:16px;color:var(--hs-danger);">{{ error }}</div>
-      <div v-else class="hs-card" style="padding:0;overflow:hidden;">
-        <div style="overflow-x:auto;max-height:calc(100vh - 320px);">
+      <div v-else-if="error" class="hs-error-alert">{{ error }}</div>
+      <div v-else class="hs-card hs-card--flush">
+        <div class="hs-table-scroll">
           <table class="hs-table">
             <thead>
               <tr>
@@ -233,12 +209,12 @@ const restoreRecord = async (record) => {
                 <td>{{ record.female_count }}</td>
                 <td>{{ record.male_count }}</td>
                 <td>
-                  <button class="hs-btn hs-btn-primary" style="padding:var(--hs-space-1) var(--hs-space-3);font-size:var(--hs-font-size-base);" @click="restoreRecord(record)"><span class="mdi mdi-restore"></span> Restore</button>
-                  <button class="hs-btn hs-btn-danger" style="padding:var(--hs-space-1) var(--hs-space-3);font-size:var(--hs-font-size-base);" @click="deleteRecord(record)"><span class="mdi mdi-delete"></span> Delete</button>
+                  <button class="hs-btn hs-btn-primary" @click="restoreRecord(record)"><span class="mdi mdi-restore"></span> Restore</button>
+                  <button class="hs-btn hs-btn-danger" @click="deleteRecord(record)"><span class="mdi mdi-delete"></span> Delete</button>
                 </td>
               </tr>
               <tr v-if="paginatedData.length === 0">
-                <td colspan="11" style="text-align:center;padding:32px;color:var(--hs-gray-400);">No archived records found.</td>
+                <td colspan="11" class="hs-table-empty">No archived records found.</td>
               </tr>
             </tbody>
           </table>
@@ -261,7 +237,6 @@ const restoreRecord = async (record) => {
         </div>
       </div>
     </div>
-  </DashboardView>
 </template>
 
 <style scoped>

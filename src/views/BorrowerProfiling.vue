@@ -205,11 +205,11 @@ async function submitMedicineRequest() {
     if (!medicineForm.value.quantity || medicineForm.value.quantity < 1) return toast.warning('Quantity must be at least 1')
 
     await createMedicineTransaction(medicineForm.value)
-    toast.success('Medicine dispensed successfully')
+    toast.success('Medicine provided successfully')
     showMedicineForm.value = false
     await Promise.all([loadData(), loadAnalytics()])
   } catch (err) {
-    toast.error(err.message || 'Failed to dispense medicine')
+    toast.error(err.message || 'Failed to provide medicine')
     console.error(err)
   }
 }
@@ -331,7 +331,7 @@ onMounted(async () => {
               <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openBorrowerDetail(b)" title="View Details">
                 <span class="mdi mdi-eye"></span> View
               </button>
-              <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openMedicineForm(b)" title="Dispense Medicine">
+              <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openMedicineForm(b)" title="Provide Medicine">
                 <span class="mdi mdi-pill"></span> Medicine
               </button>
               <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openToolForm(b)" title="Borrow Tool">
@@ -410,7 +410,7 @@ onMounted(async () => {
                 <span class="bp-rank-num">{{ idx + 1 }}</span>
                 <div class="bp-rank-info">
                   <div class="bp-rank-name">{{ med.medicine_name }}</div>
-                  <div class="bp-rank-meta">{{ med.request_count }} requests &middot; {{ med.total_quantity }} total dispensed</div>
+                  <div class="bp-rank-meta">{{ med.request_count }} requests &middot; {{ med.total_quantity }} total provided</div>
                 </div>
                 <div class="bp-rank-bar-wrap">
                   <div class="bp-rank-bar" :style="{ width: (topMedicines[0].total_quantity > 0 ? (med.total_quantity / topMedicines[0].total_quantity) * 100 : 0) + '%', background: '#4CAF50' }"></div>
@@ -557,7 +557,7 @@ onMounted(async () => {
     <div v-if="showMedicineForm" class="hs-modal-overlay" @click.self="showMedicineForm = false">
       <div class="hs-modal" style="max-width: 480px;">
         <div class="hs-modal-header">
-          <h2><span class="mdi mdi-pill"></span> Dispense Medicine</h2>
+          <h2><span class="mdi mdi-pill"></span> Provide Medicine</h2>
           <button class="hs-btn-icon" @click="showMedicineForm = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="hs-modal-body">
@@ -586,7 +586,7 @@ onMounted(async () => {
         <div class="hs-modal-footer">
           <button class="hs-btn hs-btn-ghost" @click="showMedicineForm = false">Cancel</button>
           <button class="hs-btn hs-btn-primary" @click="submitMedicineRequest">
-            <span class="mdi mdi-check"></span> Dispense
+            <span class="mdi mdi-check"></span> Confirm
           </button>
         </div>
       </div>

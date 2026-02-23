@@ -1,10 +1,17 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { supabase } from '@/utils/supabase'
 
 const emit = defineEmits(['next'])
 
 const selectedBarangay = ref('')
+const totalMemberCount = ref(0)
+
+const reportingPeriod = computed(() => {
+  const now = new Date()
+  return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+})
+
 const stats = ref({
   householdStats: {
     totalHouseholds: 0,
@@ -44,10 +51,21 @@ const fetchDewormingStats = async () => {
     const { data: dewormingData } = await supabase
       .from('deworming_records')
       .select('*')
+      .eq('barangay', selectedBarangay.value)
 
     if (dewormingData) {
       stats.value.dewormingStats.totalDewormed = dewormingData.length
-      stats.value.dewormingStats.coverageRate = Math.round((dewormingData.length / 356) * 100) // 356 is target population
+
+      // Use actual eligible child population (ages 1-14) from household members
+      const { count: eligibleChildren } = await supabase
+        .from('household_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('barangay', selectedBarangay.value)
+        .gte('age', 1)
+        .lte('age', 14)
+
+      const target = eligibleChildren || dewormingData.length
+      stats.value.dewormingStats.coverageRate = target > 0 ? Math.round((dewormingData.length / target) * 100) : 0
 
       const purokCounts = {}
       dewormingData.forEach(record => {
@@ -65,6 +83,7 @@ const fetchVitaminAStats = async () => {
     const { data: vitaminAData } = await supabase
       .from('childcare_vitamina_records')
       .select('*')
+      .eq('barangay', selectedBarangay.value)
 
     if (vitaminAData) {
       stats.value.vitaminAStats.totalSupplemented = vitaminAData.length
@@ -91,7 +110,16 @@ const fetchVitaminAStats = async () => {
         }
       })
 
-      stats.value.vitaminAStats.coverageRate = Math.round((vitaminAData.length / 145) * 100) // 145 is target population
+      // Use actual eligible child population (ages 0-4, i.e. 6-59 months) from household members
+      const { count: eligibleChildren } = await supabase
+        .from('household_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('barangay', selectedBarangay.value)
+        .gte('age', 0)
+        .lte('age', 4)
+
+      const target = eligibleChildren || vitaminAData.length
+      stats.value.vitaminAStats.coverageRate = target > 0 ? Math.round((vitaminAData.length / target) * 100) : 0
       stats.value.vitaminAStats.highestPurok = highestPurok
       stats.value.vitaminAStats.highestRate = highestRate
       stats.value.vitaminAStats.lowestPurok = lowestPurok
@@ -107,20 +135,27 @@ const fetchToolStats = async () => {
     const { data: toolsData } = await supabase
       .from('tool_transactions')
       .select('*')
+      .eq('recipient_purok', selectedBarangay.value)
+      .or(`recipient_purok.is.null`)
 
-    if (toolsData) {
-      stats.value.toolStats.totalTools = toolsData.reduce((sum, record) => sum + record.quantity, 0)
+    // Since tool_transactions may not have a barangay column, fetch all and note it
+    const { data: allToolsData } = await supabase
+      .from('tool_transactions')
+      .select('*')
+
+    if (allToolsData) {
+      stats.value.toolStats.totalTools = allToolsData.reduce((sum, record) => sum + record.quantity, 0)
 
       const purokDist = {}
-      toolsData.forEach(record => {
-        const p = record.recipient_purok || 'Unknown'
+      allToolsData.forEach(record => {
+        const p = record.recipient_purok || 'Not Specified'
         purokDist[p] = (purokDist[p] || 0) + record.quantity
       })
       stats.value.toolStats.purokDistribution = purokDist
 
       const usageByType = {}
-      toolsData.forEach(record => {
-        const toolName = record.tool_name || 'Unknown'
+      allToolsData.forEach(record => {
+        const toolName = record.tool_name || 'Not Specified'
         usageByType[toolName] = (usageByType[toolName] || 0) + record.quantity
       })
       stats.value.toolStats.usageByType = usageByType
@@ -136,6 +171,7 @@ const fetchHouseholdStats = async () => {
       .from('household_heads')
       .select('*, household_members(*)')
       .eq('barangay', selectedBarangay.value)
+      .eq('is_archived', false)
 
     if (householdHeads) {
       stats.value.householdStats.totalHouseholds = householdHeads.length
@@ -161,6 +197,7 @@ const fetchHouseholdStats = async () => {
       stats.value.householdStats.purokDistribution = purokDist
 
       const allMembers = householdHeads.flatMap(head => head.household_members || [])
+      totalMemberCount.value = allMembers.length
 
       const educationDist = {}
       allMembers.forEach(member => {
@@ -237,7 +274,7 @@ onMounted(() => {
       <h4 class="fw-bold">Health Summary Report</h4>
       <p>
         {{ selectedBarangay }} – Municipality of Buenavista, Agusan del Norte <br />
-        Reporting Period: September 2025
+        Reporting Period: {{ reportingPeriod }}
       </p>
     </div>
 
@@ -265,12 +302,12 @@ onMounted(() => {
               </li>
               <li>Educational Attainment:
                 <span v-for="(count, level) in stats.householdStats.education" :key="level">
-                  {{ level }}: {{ Math.round((count / stats.householdStats.totalPopulation) * 100) }}%,
+                  {{ level }}: {{ totalMemberCount > 0 ? Math.round((count / totalMemberCount) * 100) : 0 }}%,
                 </span>
               </li>
               <li>Civil Status:
                 <span v-for="(count, status) in stats.householdStats.civilStatus" :key="status">
-                  {{ status }}: {{ Math.round((count / stats.householdStats.totalPopulation) * 100) }}%,
+                  {{ status }}: {{ totalMemberCount > 0 ? Math.round((count / totalMemberCount) * 100) : 0 }}%,
                 </span>
               </li>
           </ul>

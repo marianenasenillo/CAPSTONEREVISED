@@ -3,8 +3,8 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
-import { calculateAge, getAgeGroupLabel, getAgeGroupKey } from '@/utils/ageClassification'
-import { getEligibleServices } from '@/utils/serviceEligibility'
+import { calculateAge, getAgeGroupLabel } from '@/utils/ageClassification'
+import { useServiceDetection } from '@/composables/useServiceDetection'
 
 const toast = useToast()
 const router = useRouter()
@@ -31,18 +31,7 @@ const middlename = ref('')
 const suffix = ref('')
 const age = ref('')
 const birthdate = ref('')
-const seStatus = ref('')
 const civilStatus = ref('')
-const planoManganak = ref('')
-const karun = ref(false)
-const spacing = ref(false)
-const limiting = ref(false)
-const fecund = ref(false)
-const infecund = ref(false)
-const fbMethod = ref('')
-const fbType = ref('')
-const fbDate = ref('')
-const changeMethod = ref('')
 
 const headBarangay = ref('')
 const headPurok = ref('')
@@ -113,35 +102,74 @@ const members = ref([
   }
 ])
 
-const eligibleServices = ref([])
+// Service detection composables
+const memberDetection = useServiceDetection()
+const headDetection = useServiceDetection()
 
+// Additional member form fields for service detection
+const isPregnant = ref(false)
+
+// Computed: purok from selected household head (for member service inserts)
+const selectedHeadPurok = computed(() => {
+  if (!selectedHeadId.value) return ''
+  const head = householdHeads.value.find(h => h.head_id === selectedHeadId.value)
+  return head?.purok || ''
+})
+
+// Member form watchers — auto-calculate age, classify, and detect services
 watch(birthdate, (newVal) => {
   if (newVal) {
     const calculatedAge = calculateAge(newVal)
     age.value = calculatedAge !== null && calculatedAge >= 0 ? calculatedAge : ''
-
     ageGroup.value = getAgeGroupLabel(newVal)
-
-    eligibleServices.value = getEligibleServices({
+    memberDetection.detectServices({
       birthdate: newVal,
       sex: sex.value,
       civil_status: civilStatus.value,
       lmp: lmp.value,
+      is_pregnant: isPregnant.value,
     })
   } else {
     age.value = ''
     ageGroup.value = ''
-    eligibleServices.value = []
+    memberDetection.resetDetection()
   }
 })
 
-watch([sex, civilStatus], () => {
+watch([sex, civilStatus, lmp, isPregnant], () => {
   if (birthdate.value) {
-    eligibleServices.value = getEligibleServices({
+    memberDetection.detectServices({
       birthdate: birthdate.value,
       sex: sex.value,
       civil_status: civilStatus.value,
       lmp: lmp.value,
+      is_pregnant: isPregnant.value,
+    })
+  }
+})
+
+// Head form watchers — auto-calculate age and detect services
+watch(() => headBirthdate.value, (newVal) => {
+  if (newVal) {
+    const calc = calculateAge(newVal)
+    headAge.value = calc !== null && calc >= 0 ? calc : ''
+    headDetection.detectServices({
+      birthdate: newVal,
+      sex: headSex.value,
+      civil_status: headCivilStatus.value,
+    })
+  } else {
+    headAge.value = ''
+    headDetection.resetDetection()
+  }
+})
+
+watch([headSex, headCivilStatus], () => {
+  if (headBirthdate.value) {
+    headDetection.detectServices({
+      birthdate: headBirthdate.value,
+      sex: headSex.value,
+      civil_status: headCivilStatus.value,
     })
   }
 })
@@ -241,32 +269,92 @@ const closeModal = () => {
   showHeadDropdown.value = false
 }
 
+// Normalize sex value to single character for DB char(1) column
+const normalizeSex = (val) => {
+  if (!val) return null
+  const v = val.toString().trim().toLowerCase()
+  if (v === 'male' || v === 'm') return 'M'
+  if (v === 'female' || v === 'f') return 'F'
+  return val
+}
+
 const saveHead = async () => {
   try {
-    const { data, error } = await supabase.from('household_heads').insert([
-      {
-        barangay: headBarangay.value,
-        purok: headPurok.value,
-        lastname: headLastname.value,
-        firstname: headFirstname.value,
-        middlename: headMiddlename.value,
-        suffix: headSuffix.value,
-        no_of_families: headFamilyCount.value ? parseInt(headFamilyCount.value) : null,
-        birthdate: headBirthdate.value || null,
-        age: headAge.value ? parseInt(headAge.value) : null,
-        sex: headSex.value || null,
-        civil_status: headCivilStatus.value || null,
-        contact_number: headContactNumber.value || null,
-        occupation: headOccupation.value || null,
-        population: null,
-        female_count: null,
-        male_count: null,
-      },
-    ])
+    const headPayload = {
+      barangay: headBarangay.value,
+      purok: headPurok.value,
+      lastname: headLastname.value,
+      firstname: headFirstname.value,
+      middlename: headMiddlename.value,
+      suffix: headSuffix.value,
+      no_of_families: headFamilyCount.value ? parseInt(headFamilyCount.value) : null,
+      birthdate: headBirthdate.value || null,
+      age: headAge.value ? parseInt(headAge.value) : null,
+      sex: normalizeSex(headSex.value),
+      civil_status: headCivilStatus.value || null,
+      contact_number: headContactNumber.value || null,
+      occupation: headOccupation.value || null,
+      population: null,
+      female_count: null,
+      male_count: null,
+    }
 
-    if (error) throw error
-    toast.success('Household head saved successfully!')
+    const { data, error } = await supabase.from('household_heads').insert([headPayload])
+
+    if (error) {
+      console.error('[saveHead] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(headPayload, null, 2))
+      throw error
+    }
+
+    // Insert detected service records
+    const baseData = {
+      purok: headPurok.value,
+      lastname: headLastname.value,
+      firstname: headFirstname.value,
+      middlename: headMiddlename.value,
+      suffix: headSuffix.value,
+      birthdate: headBirthdate.value,
+      age: headAge.value,
+      sex: headSex.value,
+      civil_status: headCivilStatus.value,
+    }
+    const servicePayloads = headDetection.buildPayloads(baseData)
+    const serviceErrors = []
+
+    for (const sp of servicePayloads) {
+      const { error: svcErr } = await supabase.from(sp.table).insert([sp.payload])
+      if (svcErr) {
+        console.error(`Failed to insert ${sp.label}:`, svcErr)
+        serviceErrors.push(sp.label)
+      }
+    }
+
+    if (serviceErrors.length > 0) {
+      toast.warning(`Head saved, but some service records failed: ${serviceErrors.join(', ')}`)
+    } else if (servicePayloads.length > 0) {
+      toast.success(`Household head saved with ${servicePayloads.length} service record(s)!`)
+    } else {
+      toast.success('Household head saved successfully!')
+    }
+
+    // Notify admin about new household head
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const bhwName = user?.user_metadata?.full_name || 'A BHW'
+      await supabase.from('notifications').insert([{
+        target_role: 'Admin',
+        type: 'bhw_creation',
+        title: `New household head: ${headFirstname.value} ${headLastname.value}`,
+        message: `${bhwName} registered a new household head in ${headBarangay.value}`,
+        icon: 'mdi-account-plus',
+        color: 'var(--hs-success)',
+        link: '/hhpsrecords',
+        created_by: user?.id || null,
+      }])
+    } catch { /* non-critical */ }
+
     closeModal()
+    headDetection.resetDetection()
 
     headBarangay.value = userBarangay.value
     headPurok.value = ''
@@ -282,8 +370,8 @@ const saveHead = async () => {
     headContactNumber.value = ''
     headOccupation.value = ''
   } catch (err) {
-    console.error(err)
-    toast.error('Error saving household head record.')
+    console.error('[saveHead] Error:', err?.code, err?.message, err)
+    toast.error(`Error saving household head: ${err?.message || 'Unknown error'}`)
   }
 }
 
@@ -294,42 +382,95 @@ const saveHousehold = async () => {
       return
     }
 
-    const { data, error } = await supabase.from('household_members').insert([
-      {
-        head_id: selectedHeadId.value,
-        barangay: barangay.value,
-        date_visit: dateVisit.value || null,
-        relationship: relationship.value,
-        lastname: lastname.value,
-        firstname: firstname.value,
-        middlename: middlename.value,
-        suffix: suffix.value,
-        birthdate: birthdate.value || null,
-        age: age.value !== '' ? parseInt(age.value) : null,
-        sex: sex.value,
-        civil_status: civilStatus.value,
-        education: education.value,
-        religion: religion.value,
-        ethnicity: ethnicity.value,
-        is_4ps_member: is4psMember.value === 'Yes',
-        household_id_4ps: householdId4ps.value,
-        philhealth_id: philhealthId.value,
-        membership_type: membershipType.value,
-        philhealth_category: philhealthCategory.value,
-        medical_history: medicalHistory.value,
-        age_group: ageGroup.value,
-        lmp: lmp.value || null,
-        using_fp_method: usingFpMethod.value === 'Yes',
-        fp_method_used: fpMethodUsed.value,
-        fp_status: fpStatus.value,
-        water_source: waterSource.value,
-        toilet_facility: toiletFacility.value,
-      },
-    ])
+    const memberPayload = {
+      head_id: selectedHeadId.value,
+      barangay: barangay.value,
+      date_visit: dateVisit.value || null,
+      relationship: relationship.value,
+      lastname: lastname.value,
+      firstname: firstname.value,
+      middlename: middlename.value,
+      suffix: suffix.value,
+      birthdate: birthdate.value || null,
+      age: age.value !== '' ? parseInt(age.value) : null,
+      sex: normalizeSex(sex.value),
+      civil_status: civilStatus.value,
+      education: education.value,
+      religion: religion.value,
+      ethnicity: ethnicity.value,
+      is_4ps_member: is4psMember.value === 'Yes',
+      household_id_4ps: householdId4ps.value,
+      philhealth_id: philhealthId.value,
+      membership_type: membershipType.value,
+      philhealth_category: philhealthCategory.value,
+      medical_history: medicalHistory.value,
+      age_group: ageGroup.value,
+      lmp: lmp.value || null,
+      using_fp_method: usingFpMethod.value === 'Yes',
+      fp_method_used: fpMethodUsed.value,
+      fp_status: fpStatus.value,
+      water_source: waterSource.value,
+      toilet_facility: toiletFacility.value,
+      is_pregnant: isPregnant.value,
+    }
 
-    if (error) throw error
-    toast.success('Household member saved successfully!')
+    const { data, error } = await supabase.from('household_members').insert([memberPayload])
+
+    if (error) {
+      console.error('[saveMember] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(memberPayload, null, 2))
+      throw error
+    }
+
+    // Insert detected service records
+    const memberPurok = selectedHeadPurok.value || purok.value || ''
+    const baseData = {
+      purok: memberPurok,
+      lastname: lastname.value,
+      firstname: firstname.value,
+      middlename: middlename.value,
+      suffix: suffix.value,
+      birthdate: birthdate.value,
+      age: age.value,
+      sex: sex.value,
+      civil_status: civilStatus.value,
+    }
+    const servicePayloads = memberDetection.buildPayloads(baseData)
+    const serviceErrors = []
+
+    for (const sp of servicePayloads) {
+      const { error: svcErr } = await supabase.from(sp.table).insert([sp.payload])
+      if (svcErr) {
+        console.error(`Failed to insert ${sp.label}:`, svcErr)
+        serviceErrors.push(sp.label)
+      }
+    }
+
+    if (serviceErrors.length > 0) {
+      toast.warning(`Member saved, but some service records failed: ${serviceErrors.join(', ')}`)
+    } else if (servicePayloads.length > 0) {
+      toast.success(`Household member saved with ${servicePayloads.length} service record(s)!`)
+    } else {
+      toast.success('Household member saved successfully!')
+    }
+
+    // Notify admin about new household member
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      const bhwName = currentUser?.user_metadata?.full_name || 'A BHW'
+      await supabase.from('notifications').insert([{
+        target_role: 'Admin',
+        type: 'bhw_creation',
+        title: `New member: ${firstname.value} ${lastname.value}`,
+        message: `${bhwName} added a new household member in ${barangay.value}`,
+        icon: 'mdi-account-plus-outline',
+        color: 'var(--hs-primary)',
+        link: '/hhpsrecords',
+        created_by: currentUser?.id || null,
+      }])
+    } catch { /* non-critical */ }
+
     closeModal()
+    memberDetection.resetDetection()
 
     selectedHeadId.value = ''
     headSearchQuery.value = ''
@@ -362,9 +503,10 @@ const saveHousehold = async () => {
     fpStatus.value = ''
     waterSource.value = ''
     toiletFacility.value = ''
+    isPregnant.value = false
   } catch (err) {
-    console.error(err)
-    toast.error('Error saving household member record.')
+    console.error('[saveMember] Error:', err?.code, err?.message, err)
+    toast.error(`Error saving member: ${err?.message || 'Unknown error'}`)
   }
 }
 
@@ -385,6 +527,24 @@ const filteredDirectoryHeads = computed(() => {
     return members.some(m => `${m.lastname} ${m.firstname} ${m.middlename || ''}`.toLowerCase().includes(q))
   })
 })
+
+// Flat list of members matching search (shown when searching)
+const filteredDirectoryMembersList = computed(() => {
+  if (!directorySearch.value.trim()) return []
+  const q = directorySearch.value.toLowerCase()
+  const results = []
+  for (const h of directoryHeads.value) {
+    const members = directoryMembers.value[h.head_id] || []
+    for (const m of members) {
+      if (`${m.lastname} ${m.firstname} ${m.middlename || ''}`.toLowerCase().includes(q)) {
+        results.push({ ...m, _head: h })
+      }
+    }
+  }
+  return results
+})
+
+const isDirectorySearchActive = computed(() => !!directorySearch.value.trim())
 
 const loadDirectory = async () => {
   loadingDirectory.value = true
@@ -533,7 +693,7 @@ const saveQuickAddRecord = async () => {
       table = 'family_planning_records'
       payload = {
         purok: f.purok, surname: f.surname, firstname: f.firstname,
-        mother_name: f.motherName, sex: f.sex,
+        mother_name: f.motherName, sex: normalizeSex(f.sex),
         birthday: f.birthday || null,
         age: f.age !== '' ? parseInt(f.age) : null
       }
@@ -557,14 +717,17 @@ const saveQuickAddRecord = async () => {
     }
 
     const { error } = await supabase.from(table).insert([payload])
-    if (error) throw error
+    if (error) {
+      console.error(`[quickAdd] Supabase error for ${table}:`, error.code, error.message, '\nPayload:', JSON.stringify(payload, null, 2))
+      throw error
+    }
 
     const labels = { wra: 'WRA', cervical: 'Cervical Screening', familyplanning: 'Family Planning', childcare: 'Childcare', deworming: 'Deworming' }
     toast.success(`${labels[selectedRecordType.value]} record saved successfully!`)
     showQuickAddForm.value = false
   } catch (err) {
-    console.error('Failed to save quick-add record', err)
-    toast.error('Failed to save record: ' + (err.message || err))
+    console.error('[quickAdd] Error:', err?.code, err?.message, err)
+    toast.error(`Failed to save record: ${err?.message || err}`)
   } finally {
     savingQuickAdd.value = false
   }
@@ -642,7 +805,7 @@ const saveQuickAddRecord = async () => {
             </div>
           </div>
           <div class="inv-toolbar-right">
-            <span class="inv-count-label">{{ filteredDirectoryHeads.length }} household(s)</span>
+            <span class="inv-count-label">{{ isDirectorySearchActive ? filteredDirectoryMembersList.length + ' member(s)' : filteredDirectoryHeads.length + ' household(s)' }}</span>
             <button class="hs-btn hs-btn-secondary" @click="loadDirectory">
               <span class="mdi mdi-refresh"></span> Refresh
             </button>
@@ -653,6 +816,31 @@ const saveQuickAddRecord = async () => {
           <span class="mdi mdi-loading mdi-spin"></span> Loading directory...
         </div>
 
+        <!-- Flat member search results -->
+        <div v-else-if="isDirectorySearchActive">
+          <div v-if="filteredDirectoryMembersList.length === 0" class="dir-empty">
+            <span class="mdi mdi-account-search-outline"></span>
+            <p>No members found matching "{{ directorySearch }}".</p>
+          </div>
+          <div v-else class="dir-list">
+            <div class="dir-search-count">{{ filteredDirectoryMembersList.length }} member(s) found</div>
+            <div v-for="item in filteredDirectoryMembersList" :key="item.member_id" class="dir-member-row dir-member-search-result">
+              <div class="dir-member-icon"><span class="mdi mdi-account"></span></div>
+              <div class="dir-member-info">
+                <strong>{{ item.lastname }}, {{ item.firstname }} {{ item.middlename || '' }}</strong>
+                <span class="dir-member-meta">
+                  {{ (item.sex === 'M' ? 'Male' : item.sex === 'F' ? 'Female' : item.sex) || '—' }} &bull; Age: {{ item.age ?? '—' }} &bull; {{ item.relationship || '—' }} &bull; {{ item.civil_status || '—' }}
+                </span>
+                <span class="dir-member-head-label">Head: {{ item._head.lastname }}, {{ item._head.firstname }} ({{ item._head.purok || 'No Purok' }})</span>
+              </div>
+              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(item, 'member', item._head.purok)" title="Quick Add Record">
+                <span class="mdi mdi-plus-circle-outline"></span> Add Record
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Normal directory (no search) -->
         <div v-else-if="filteredDirectoryHeads.length === 0" class="dir-empty">
           <span class="mdi mdi-account-group-outline"></span>
           <p>No household heads found.</p>
@@ -681,7 +869,7 @@ const saveQuickAddRecord = async () => {
                 <div class="dir-member-info">
                   <strong>{{ member.lastname }}, {{ member.firstname }} {{ member.middlename || '' }}</strong>
                   <span class="dir-member-meta">
-                    {{ member.sex || '—' }} &bull; Age: {{ member.age ?? '—' }} &bull; {{ member.relationship || '—' }} &bull; {{ member.civil_status || '—' }}
+                    {{ (member.sex === 'M' ? 'Male' : member.sex === 'F' ? 'Female' : member.sex) || '—' }} &bull; Age: {{ member.age ?? '—' }} &bull; {{ member.relationship || '—' }} &bull; {{ member.civil_status || '—' }}
                   </span>
                 </div>
                 <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(member, 'member', head.purok)" title="Quick Add Record">
@@ -810,7 +998,7 @@ const saveQuickAddRecord = async () => {
               <div class="hs-form-row">
                 <div class="hs-form-group"><label class="hs-label">Mother Name</label><input v-model="quickAddForm.motherName" class="hs-input" /></div>
                 <div class="hs-form-group"><label class="hs-label">Sex</label>
-                  <select v-model="quickAddForm.sex" class="hs-select"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select>
+                  <select v-model="quickAddForm.sex" class="hs-select"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>
                 </div>
                 <div class="hs-form-group"><label class="hs-label">Birthday</label><input v-model="quickAddForm.birthday" type="date" class="hs-input" /></div>
                 <div class="hs-form-group"><label class="hs-label">Age</label><input v-model.number="quickAddForm.age" type="number" class="hs-input" /></div>
@@ -834,7 +1022,7 @@ const saveQuickAddRecord = async () => {
                 <div class="hs-form-group"><label class="hs-label">Age</label><input v-model.number="quickAddForm.age" type="number" class="hs-input" /></div>
                 <div class="hs-form-group"><label class="hs-label">Birthdate</label><input v-model="quickAddForm.birthdate" type="date" class="hs-input" /></div>
                 <div class="hs-form-group"><label class="hs-label">Gender</label>
-                  <select v-model="quickAddForm.gender" class="hs-select"><option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option></select>
+                  <select v-model="quickAddForm.gender" class="hs-select"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>
                 </div>
                 <div class="hs-form-group"><label class="hs-label">Mother Name</label><input v-model="quickAddForm.motherName" class="hs-input" /></div>
               </div>
@@ -895,279 +1083,380 @@ const saveQuickAddRecord = async () => {
             <!-- Household Member Form -->
             <template v-if="modalType === 'household'">
               <form @submit.prevent="saveHousehold">
-                <!-- Household Head Selection -->
-                <div class="hs-form-row">
-                  <div class="hs-form-group form-group-full">
-                    <label class="hs-label">Household Head <span class="hs-text-danger">*</span></label>
-                    <div class="head-search-wrapper">
-                      <div class="head-search-input-row">
-                        <input
-                          type="text"
-                          v-model="headSearchQuery"
-                          class="hs-input"
-                          placeholder="Search household head by name or purok..."
-                          @focus="onHeadSearchFocus"
-                          @blur="onHeadSearchBlur"
-                          autocomplete="off"
-                        />
-                        <button
-                          v-if="selectedHeadId"
-                          type="button"
-                          class="head-clear-btn"
-                          @click="clearHeadSelection"
-                          title="Clear selection"
-                        >&times;</button>
-                      </div>
-                      <div v-if="selectedHeadId && !showHeadDropdown" class="head-selected-badge">
-                        <span class="mdi mdi-check-circle hs-text-success"></span>
-                        {{ selectedHeadLabel }}
-                      </div>
-                      <div v-if="showHeadDropdown" class="head-dropdown">
-                        <div v-if="loadingHeads" class="head-dropdown-item head-dropdown-empty">
-                          Loading household heads...
+
+                <!-- SECTION: Household Head -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-home-account form-section-icon form-section-icon--primary"></span>
+                    <div>
+                      <strong>Household Head</strong>
+                      <span>Select the household head this member belongs to</span>
+                    </div>
+                  </div>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group form-group-full">
+                      <label class="hs-label">Household Head <span class="hs-text-danger">*</span></label>
+                      <div class="head-search-wrapper">
+                        <div class="head-search-input-row">
+                          <input
+                            type="text"
+                            v-model="headSearchQuery"
+                            class="hs-input"
+                            placeholder="Search household head by name or purok..."
+                            @focus="onHeadSearchFocus"
+                            @blur="onHeadSearchBlur"
+                            autocomplete="off"
+                          />
+                          <button
+                            v-if="selectedHeadId"
+                            type="button"
+                            class="head-clear-btn"
+                            @click="clearHeadSelection"
+                            title="Clear selection"
+                          >&times;</button>
                         </div>
-                        <div v-else-if="filteredHeads.length === 0" class="head-dropdown-item head-dropdown-empty">
-                          No household heads found. Register one first.
+                        <div v-if="selectedHeadId && !showHeadDropdown" class="head-selected-badge">
+                          <span class="mdi mdi-check-circle hs-text-success"></span>
+                          {{ selectedHeadLabel }}
                         </div>
-                        <div
-                          v-else
-                          v-for="head in filteredHeads"
-                          :key="head.head_id"
-                          class="head-dropdown-item"
-                          :class="{ 'head-dropdown-item-active': head.head_id === selectedHeadId }"
-                          @mousedown.prevent="selectHead(head)"
-                        >
-                          <span class="mdi mdi-account hs-text-muted"></span>
-                          {{ head.lastname }}, {{ head.firstname }} &mdash; {{ head.purok || 'N/A' }}
-                          <span class="purok-label">
-                            Head ID: {{ head.head_id }}
-                          </span>
+                        <div v-if="showHeadDropdown" class="head-dropdown">
+                          <div v-if="loadingHeads" class="head-dropdown-item head-dropdown-empty">
+                            Loading household heads...
+                          </div>
+                          <div v-else-if="filteredHeads.length === 0" class="head-dropdown-item head-dropdown-empty">
+                            No household heads found. Register one first.
+                          </div>
+                          <div
+                            v-else
+                            v-for="head in filteredHeads"
+                            :key="head.head_id"
+                            class="head-dropdown-item"
+                            :class="{ 'head-dropdown-item-active': head.head_id === selectedHeadId }"
+                            @mousedown.prevent="selectHead(head)"
+                          >
+                            <span class="mdi mdi-account hs-text-muted"></span>
+                            {{ head.lastname }}, {{ head.firstname }} &mdash; {{ head.purok || 'N/A' }}
+                            <span class="purok-label">
+                              Head ID: {{ head.head_id }}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Date of Visit</label>
-                    <input type="date" v-model="dateVisit" class="hs-input" />
+                <!-- SECTION: Visit & Location -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-map-marker-outline form-section-icon form-section-icon--info"></span>
+                    <div>
+                      <strong>Visit &amp; Location</strong>
+                      <span>Date of visit and barangay/purok assignment</span>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Barangay</label>
-                    <input type="text" v-model="barangay" class="hs-input" readonly />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Purok</label>
-                    <select v-model="purok" class="hs-select">
-                      <option value="">Select Purok</option>
-                      <option value="Purok 1">Purok 1</option>
-                      <option value="Purok 2">Purok 2</option>
-                      <option value="Purok 3">Purok 3</option>
-                      <option value="Purok 4">Purok 4</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Last Name</label>
-                    <input type="text" v-model="lastname" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">First Name</label>
-                    <input type="text" v-model="firstname" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Middle Name</label>
-                    <input type="text" v-model="middlename" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Suffix</label>
-                    <input type="text" v-model="suffix" class="hs-input" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Date of Visit</label>
+                      <input type="date" v-model="dateVisit" class="hs-input" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Barangay</label>
+                      <input type="text" v-model="barangay" class="hs-input hs-input--readonly" readonly />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Purok</label>
+                      <select v-model="purok" class="hs-select">
+                        <option value="">Select Purok</option>
+                        <option value="Purok 1">Purok 1</option>
+                        <option value="Purok 2">Purok 2</option>
+                        <option value="Purok 3">Purok 3</option>
+                        <option value="Purok 4">Purok 4</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Relationship to HH Head</label>
-                    <select v-model="relationship" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Spouse">Spouse</option>
-                      <option value="Son">Son</option>
-                      <option value="Daughter">Daughter</option>
-                      <option value="Other">Other</option>
-                    </select>
+                <!-- SECTION: Personal Information -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-account-outline form-section-icon form-section-icon--primary"></span>
+                    <div>
+                      <strong>Personal Information</strong>
+                      <span>Basic identity and demographic details of the member</span>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Date of Birth</label>
-                    <input type="date" v-model="birthdate" class="hs-input" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Last Name</label>
+                      <input type="text" v-model="lastname" class="hs-input" placeholder="e.g. Dela Cruz" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">First Name</label>
+                      <input type="text" v-model="firstname" class="hs-input" placeholder="e.g. Juan" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Middle Name</label>
+                      <input type="text" v-model="middlename" class="hs-input" placeholder="Optional" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Suffix</label>
+                      <input type="text" v-model="suffix" class="hs-input" placeholder="Jr, Sr, III..." />
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Age</label>
-                    <input type="number" v-model="age" class="hs-input" min="0" readonly />
-                    <span class="hs-form-hint">Auto-calculated from birthdate</span>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Relationship to HH Head</label>
+                      <select v-model="relationship" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Spouse">Spouse</option>
+                        <option value="Son">Son</option>
+                        <option value="Daughter">Daughter</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Date of Birth</label>
+                      <input type="date" v-model="birthdate" class="hs-input" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Age</label>
+                      <input type="number" v-model="age" class="hs-input hs-input--readonly" min="0" readonly />
+                      <span class="hs-form-hint"><span class="mdi mdi-auto-fix"></span> Auto-calculated</span>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Sex</label>
+                      <select v-model="sex" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Civil Status</label>
+                      <select v-model="civilStatus" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Single">Single</option>
+                        <option value="Married">Married</option>
+                        <option value="Widowed">Widowed</option>
+                        <option value="Separated">Separated</option>
+                        <option value="Live-in">Live-in</option>
+                      </select>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Sex</label>
-                    <select v-model="sex" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Civil Status</label>
-                    <select v-model="civilStatus" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Single">Single</option>
-                      <option value="Married">Married</option>
-                      <option value="Widowed">Widowed</option>
-                      <option value="Separated">Separated</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Education</label>
-                    <select v-model="education" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Elementary">Elementary</option>
-                      <option value="High School">High School</option>
-                      <option value="College">College</option>
-                      <option value="Vocational">Vocational</option>
-                      <option value="None">None</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Religion</label>
-                    <select v-model="religion" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Catholic">Catholic</option>
-                      <option value="Islam">Islam</option>
-                      <option value="Protestant">Protestant</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Ethnicity</label>
-                    <select v-model="ethnicity" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="IP">IP</option>
-                      <option value="Non-IP">Non-IP</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">4PS Member</label>
-                    <select v-model="is4psMember" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Yes">Yes</option>
-                      <option value="No">No</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">4PS Household ID</label>
-                    <input type="text" v-model="householdId4ps" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Philhealth ID No</label>
-                    <input type="text" v-model="philhealthId" class="hs-input" />
-                  </div>
-                </div>
-
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Membership Type</label>
-                    <select v-model="membershipType" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="M-member">M-member</option>
-                      <option value="D-dependent">D-dependent</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Philhealth Category</label>
-                    <select v-model="philhealthCategory" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="DC">Direct Contributor</option>
-                      <option value="IC">Indirect Contributor</option>
-                      <option value="U">Unknown</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Medical History</label>
-                    <select v-model="medicalHistory" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="HPN">Hypertension</option>
-                      <option value="DM">Diabetes</option>
-                      <option value="TB">Tuberculosis</option>
-                      <option value="O">Others</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Age/Health Risk Group</label>
-                    <input type="text" v-model="ageGroup" class="hs-input" readonly :style="{ backgroundColor: '#f5f5f5' }" />
-                    <small v-if="ageGroup" class="hs-hint" style="color: var(--hs-success); margin-top: 2px;">
-                      <span class="mdi mdi-check-circle"></span> Auto-classified from birthdate
-                    </small>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Education</label>
+                      <select v-model="education" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Elementary">Elementary</option>
+                        <option value="High School">High School</option>
+                        <option value="College">College</option>
+                        <option value="Vocational">Vocational</option>
+                        <option value="None">None</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Religion</label>
+                      <select v-model="religion" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Catholic">Catholic</option>
+                        <option value="Islam">Islam</option>
+                        <option value="Protestant">Protestant</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Ethnicity</label>
+                      <select v-model="ethnicity" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="IP">IP</option>
+                        <option value="Non-IP">Non-IP</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <!-- Eligible Services (auto-detected) -->
-                <div v-if="eligibleServices.length > 0" class="hs-eligible-services" style="margin: 12px 0; padding: 12px 16px; background: #f0f7ff; border-radius: 8px; border-left: 3px solid var(--hs-primary);">
-                  <div style="font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--hs-primary);">
-                    <span class="mdi mdi-clipboard-check-outline"></span> Eligible Services (Auto-Detected)
+                <!-- SECTION: Government Programs & Insurance -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-shield-check-outline form-section-icon form-section-icon--success"></span>
+                    <div>
+                      <strong>Government Programs &amp; Insurance</strong>
+                      <span>4Ps membership and PhilHealth coverage details</span>
+                    </div>
                   </div>
-                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                    <span
-                      v-for="svc in eligibleServices"
-                      :key="svc.key"
-                      style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: white; border-radius: 14px; font-size: 12px; font-weight: 500; border: 1px solid #e0e0e0;"
-                    >
-                      <span :class="'mdi ' + svc.icon" style="font-size: 14px;"></span>
-                      {{ svc.label }}
-                    </span>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">4Ps Member</label>
+                      <select v-model="is4psMember" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">4Ps Household ID</label>
+                      <input type="text" v-model="householdId4ps" class="hs-input" placeholder="If applicable" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">PhilHealth ID No.</label>
+                      <input type="text" v-model="philhealthId" class="hs-input" />
+                    </div>
+                  </div>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Membership Type</label>
+                      <select v-model="membershipType" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="M-member">M &mdash; Member</option>
+                        <option value="D-dependent">D &mdash; Dependent</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">PhilHealth Category</label>
+                      <select v-model="philhealthCategory" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="DC">Direct Contributor (DC)</option>
+                        <option value="IC">Indirect Contributor (IC)</option>
+                        <option value="U">Unknown (U)</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">LMP</label>
-                    <input type="date" v-model="lmp" class="hs-input" />
+                <!-- SECTION: Health Information -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-heart-pulse form-section-icon form-section-icon--danger"></span>
+                    <div>
+                      <strong>Health Information</strong>
+                      <span>Medical history, risk group, reproductive health, and living conditions</span>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Using FP Method?</label>
-                    <select v-model="usingFpMethod" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Yes">Yes</option>
-                      <option value="No">No</option>
-                    </select>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Medical History</label>
+                      <select v-model="medicalHistory" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="HPN">Hypertension (HPN)</option>
+                        <option value="DM">Diabetes Mellitus (DM)</option>
+                        <option value="TB">Tuberculosis (TB)</option>
+                        <option value="O">Others</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Age/Health Risk Group</label>
+                      <input type="text" v-model="ageGroup" class="hs-input hs-input--readonly" readonly />
+                      <small v-if="ageGroup" class="hs-form-hint" style="color: var(--hs-success);">
+                        <span class="mdi mdi-check-circle"></span> Auto-classified from birthdate
+                      </small>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">FP Method Used</label>
-                    <input type="text" v-model="fpMethodUsed" class="hs-input" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">LMP (Last Menstrual Period)</label>
+                      <input type="date" v-model="lmp" class="hs-input" />
+                    </div>
+                    <div class="hs-form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px;">
+                      <label class="hs-checkbox-label">
+                        <input type="checkbox" v-model="isPregnant" />
+                        Currently Pregnant
+                      </label>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Using FP Method?</label>
+                      <select v-model="usingFpMethod" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">FP Method Used</label>
+                      <input type="text" v-model="fpMethodUsed" class="hs-input" placeholder="e.g. Pills, IUD..." />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">FP Status</label>
+                      <input type="text" v-model="fpStatus" class="hs-input" />
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">FP Status</label>
-                    <input type="text" v-model="fpStatus" class="hs-input" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Water Source</label>
+                      <input type="text" v-model="waterSource" class="hs-input" placeholder="e.g. Piped, Well..." />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Toilet Facility</label>
+                      <input type="text" v-model="toiletFacility" class="hs-input" placeholder="e.g. Water-sealed, Open pit..." />
+                    </div>
                   </div>
                 </div>
 
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Water Source</label>
-                    <input type="text" v-model="waterSource" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Toilet Facility</label>
-                    <input type="text" v-model="toiletFacility" class="hs-input" />
+                <!-- SECTION: Auto-Detected Services -->
+                <div v-if="memberDetection.detectedTables.value.length > 0" class="form-section">
+                  <div class="svc-detection-panel">
+                    <div class="svc-detection-header">
+                      <span class="mdi mdi-clipboard-check-outline"></span>
+                      <div>
+                        <strong>Eligible Services (Auto-Detected)</strong>
+                        <span class="svc-detection-hint">Based on the entered data, this member qualifies for the services below. Uncheck any you do not wish to enroll.</span>
+                      </div>
+                    </div>
+
+                    <div v-for="tbl in memberDetection.detectedTables.value" :key="tbl.table" class="svc-table-card" :class="{ 'svc-table-card--disabled': !memberDetection.selectedTables[tbl.table] }">
+                      <div class="svc-table-card-header" @click="memberDetection.toggleTable(tbl.table)">
+                        <input type="checkbox" :checked="memberDetection.selectedTables[tbl.table]" @click.stop="memberDetection.toggleTable(tbl.table)" class="svc-table-check" />
+                        <span class="mdi" :class="tbl.icon" :style="{ color: tbl.color, fontSize: '18px' }"></span>
+                        <strong>{{ tbl.label }}</strong>
+                        <span class="svc-table-badges">
+                          <span v-for="svc in tbl.services" :key="svc.key" class="svc-badge">{{ svc.label }}</span>
+                        </span>
+                      </div>
+
+                      <div v-if="memberDetection.selectedTables[tbl.table]" class="svc-table-card-body">
+                        <template v-if="memberDetection.getVisibleFields(tbl.table, { age: age, sex: sex }).length > 0">
+                          <div class="hs-form-row">
+                            <template v-for="field in memberDetection.getVisibleFields(tbl.table, { age: age, sex: sex })" :key="field.key">
+                              <div v-if="field.type === 'text'" class="hs-form-group">
+                                <label class="hs-label">{{ field.label }}</label>
+                                <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="text" class="hs-input" />
+                              </div>
+                              <div v-else-if="field.type === 'date'" class="hs-form-group">
+                                <label class="hs-label">{{ field.label }}</label>
+                                <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="date" class="hs-input" />
+                              </div>
+                              <div v-else-if="field.type === 'select'" class="hs-form-group">
+                                <label class="hs-label">{{ field.label }}</label>
+                                <select v-model="memberDetection.serviceFormData[tbl.table][field.key]" class="hs-select">
+                                  <option value="">Select</option>
+                                  <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+                                </select>
+                              </div>
+                              <div v-else-if="field.type === 'checkbox'" class="hs-form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
+                                <label class="hs-checkbox-label">
+                                  <input type="checkbox" v-model="memberDetection.serviceFormData[tbl.table][field.key]" />
+                                  {{ field.label }}
+                                </label>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <p v-else class="svc-no-extra"><span class="mdi mdi-check-circle-outline"></span> No additional fields required &mdash; data will be taken from the form above.</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div class="hs-modal-footer hs-modal-footer--flat">
-                  <button type="button" class="hs-btn hs-btn-secondary" @click="closeModal">Cancel</button>
+                  <button type="button" class="hs-btn hs-btn-secondary" @click="closeModal">
+                    <span class="mdi mdi-close"></span> Cancel
+                  </button>
                   <button type="submit" class="hs-btn hs-btn-primary">
                     <span class="mdi mdi-plus"></span> Add Member
+                    <span v-if="memberDetection.detectedTables.value.length > 0" class="btn-service-count">
+                      + {{ memberDetection.detectedTables.value.filter(t => memberDetection.selectedTables[t.table]).length }} service(s)
+                    </span>
                   </button>
                 </div>
               </form>
@@ -1176,97 +1465,189 @@ const saveQuickAddRecord = async () => {
             <!-- Household Head Form -->
             <template v-else-if="modalType === 'head'">
               <form @submit.prevent="saveHead">
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Barangay</label>
-                    <input v-model="headBarangay" type="text" class="hs-input" readonly />
+
+                <!-- SECTION: Location -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-map-marker-outline form-section-icon form-section-icon--info"></span>
+                    <div>
+                      <strong>Location</strong>
+                      <span>Barangay and purok assignment for this household</span>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Purok</label>
-                    <select v-model="headPurok" class="hs-select">
-                      <option value="">Select Purok</option>
-                      <option value="Purok 1">Purok 1</option>
-                      <option value="Purok 2">Purok 2</option>
-                      <option value="Purok 3">Purok 3</option>
-                      <option value="Purok 4">Purok 4</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Last Name</label>
-                    <input v-model="headLastname" type="text" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">First Name</label>
-                    <input v-model="headFirstname" type="text" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Middle Name</label>
-                    <input v-model="headMiddlename" type="text" class="hs-input" />
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Suffix</label>
-                    <input v-model="headSuffix" type="text" class="hs-input" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Barangay</label>
+                      <input v-model="headBarangay" type="text" class="hs-input hs-input--readonly" readonly />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Purok</label>
+                      <select v-model="headPurok" class="hs-select">
+                        <option value="">Select Purok</option>
+                        <option value="Purok 1">Purok 1</option>
+                        <option value="Purok 2">Purok 2</option>
+                        <option value="Purok 3">Purok 3</option>
+                        <option value="Purok 4">Purok 4</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Birthdate</label>
-                    <input v-model="headBirthdate" type="date" class="hs-input" />
+                <!-- SECTION: Personal Information -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-account-outline form-section-icon form-section-icon--primary"></span>
+                    <div>
+                      <strong>Personal Information</strong>
+                      <span>Full name, birthdate, sex, and civil status of the household head</span>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Age</label>
-                    <input v-model.number="headAge" type="number" class="hs-input" min="0" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Last Name</label>
+                      <input v-model="headLastname" type="text" class="hs-input" placeholder="e.g. Dela Cruz" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">First Name</label>
+                      <input v-model="headFirstname" type="text" class="hs-input" placeholder="e.g. Juan" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Middle Name</label>
+                      <input v-model="headMiddlename" type="text" class="hs-input" placeholder="Optional" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Suffix</label>
+                      <input v-model="headSuffix" type="text" class="hs-input" placeholder="Jr, Sr, III..." />
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Sex</label>
-                    <select v-model="headSex" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Civil Status</label>
-                    <select v-model="headCivilStatus" class="hs-select">
-                      <option value="">Select</option>
-                      <option value="Single">Single</option>
-                      <option value="Married">Married</option>
-                      <option value="Widowed">Widowed</option>
-                      <option value="Separated">Separated</option>
-                      <option value="Live-in">Live-in</option>
-                    </select>
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Birthdate</label>
+                      <input v-model="headBirthdate" type="date" class="hs-input" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Age</label>
+                      <input v-model.number="headAge" type="number" class="hs-input hs-input--readonly" min="0" readonly />
+                      <span class="hs-form-hint"><span class="mdi mdi-auto-fix"></span> Auto-calculated</span>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Sex</label>
+                      <select v-model="headSex" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="M">Male</option>
+                        <option value="F">Female</option>
+                      </select>
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Civil Status</label>
+                      <select v-model="headCivilStatus" class="hs-select">
+                        <option value="">Select</option>
+                        <option value="Single">Single</option>
+                        <option value="Married">Married</option>
+                        <option value="Widowed">Widowed</option>
+                        <option value="Separated">Separated</option>
+                        <option value="Live-in">Live-in</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div class="hs-form-row">
-                  <div class="hs-form-group">
-                    <label class="hs-label">Contact Number</label>
-                    <input v-model="headContactNumber" type="text" class="hs-input" placeholder="e.g. 09xxxxxxxxx" />
+                <!-- SECTION: Contact & Household -->
+                <div class="form-section">
+                  <div class="form-section-label">
+                    <span class="mdi mdi-phone-outline form-section-icon form-section-icon--success"></span>
+                    <div>
+                      <strong>Contact &amp; Household Details</strong>
+                      <span>Phone number, occupation, and number of families in the household</span>
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">Occupation</label>
-                    <input v-model="headOccupation" type="text" class="hs-input" />
+                  <div class="hs-form-row">
+                    <div class="hs-form-group">
+                      <label class="hs-label">Contact Number</label>
+                      <input v-model="headContactNumber" type="text" class="hs-input" placeholder="e.g. 09xxxxxxxxx" />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">Occupation</label>
+                      <input v-model="headOccupation" type="text" class="hs-input" placeholder="e.g. Farmer, Teacher..." />
+                    </div>
+                    <div class="hs-form-group">
+                      <label class="hs-label">No. of Families</label>
+                      <input v-model="headFamilyCount" type="number" class="hs-input" min="0" placeholder="0" />
+                    </div>
                   </div>
-                  <div class="hs-form-group">
-                    <label class="hs-label">No. of Families</label>
-                    <input v-model="headFamilyCount" type="number" class="hs-input" min="0" />
+                  <div class="auto-calc-note">
+                    <span class="mdi mdi-information-outline" style="margin-right: 6px; font-size: 16px;"></span>
+                    <div>
+                      <strong>Population, Female Count, and Male Count</strong> are automatically calculated from the household members added under this head.
+                    </div>
                   </div>
                 </div>
 
-                <!-- Auto-calculation info note -->
-                <div class="auto-calc-note">
-                  <span class="mdi mdi-information-outline" style="margin-right: 6px; font-size: 16px;"></span>
-                  <div>
-                    <strong>Population, Female Count, and Male Count</strong> are automatically calculated from the household members added under this head. You do not need to enter them manually.
+                <!-- SECTION: Auto-Detected Services -->
+                <div v-if="headDetection.detectedTables.value.length > 0" class="form-section">
+                  <div class="svc-detection-panel">
+                    <div class="svc-detection-header">
+                      <span class="mdi mdi-clipboard-check-outline"></span>
+                      <div>
+                        <strong>Eligible Services (Auto-Detected)</strong>
+                        <span class="svc-detection-hint">Based on the entered data, this household head qualifies for the services below. Uncheck any you do not wish to enroll.</span>
+                      </div>
+                    </div>
+
+                    <div v-for="tbl in headDetection.detectedTables.value" :key="tbl.table" class="svc-table-card" :class="{ 'svc-table-card--disabled': !headDetection.selectedTables[tbl.table] }">
+                      <div class="svc-table-card-header" @click="headDetection.toggleTable(tbl.table)">
+                        <input type="checkbox" :checked="headDetection.selectedTables[tbl.table]" @click.stop="headDetection.toggleTable(tbl.table)" class="svc-table-check" />
+                        <span class="mdi" :class="tbl.icon" :style="{ color: tbl.color, fontSize: '18px' }"></span>
+                        <strong>{{ tbl.label }}</strong>
+                        <span class="svc-table-badges">
+                          <span v-for="svc in tbl.services" :key="svc.key" class="svc-badge">{{ svc.label }}</span>
+                        </span>
+                      </div>
+
+                      <div v-if="headDetection.selectedTables[tbl.table]" class="svc-table-card-body">
+                        <template v-if="headDetection.getVisibleFields(tbl.table, { age: headAge, sex: headSex }).length > 0">
+                          <div class="hs-form-row">
+                            <template v-for="field in headDetection.getVisibleFields(tbl.table, { age: headAge, sex: headSex })" :key="field.key">
+                              <div v-if="field.type === 'text'" class="hs-form-group">
+                                <label class="hs-label">{{ field.label }}</label>
+                                <input v-model="headDetection.serviceFormData[tbl.table][field.key]" type="text" class="hs-input" />
+                              </div>
+                              <div v-else-if="field.type === 'date'" class="hs-form-group">
+                                <label class="hs-label">{{ field.label }}</label>
+                                <input v-model="headDetection.serviceFormData[tbl.table][field.key]" type="date" class="hs-input" />
+                              </div>
+                              <div v-else-if="field.type === 'select'" class="hs-form-group">
+                                <label class="hs-label">{{ field.label }}</label>
+                                <select v-model="headDetection.serviceFormData[tbl.table][field.key]" class="hs-select">
+                                  <option value="">Select</option>
+                                  <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+                                </select>
+                              </div>
+                              <div v-else-if="field.type === 'checkbox'" class="hs-form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
+                                <label class="hs-checkbox-label">
+                                  <input type="checkbox" v-model="headDetection.serviceFormData[tbl.table][field.key]" />
+                                  {{ field.label }}
+                                </label>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                        <p v-else class="svc-no-extra"><span class="mdi mdi-check-circle-outline"></span> No additional fields required &mdash; data will be taken from the form above.</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 <div class="hs-modal-footer hs-modal-footer--flat">
-                  <button type="button" class="hs-btn hs-btn-secondary" @click="closeModal">Cancel</button>
-                  <button type="submit" class="hs-btn hs-btn-primary">Save Record</button>
+                  <button type="button" class="hs-btn hs-btn-secondary" @click="closeModal">
+                    <span class="mdi mdi-close"></span> Cancel
+                  </button>
+                  <button type="submit" class="hs-btn hs-btn-primary">
+                    <span class="mdi mdi-content-save"></span> Save Record
+                    <span v-if="headDetection.detectedTables.value.length > 0" class="btn-service-count">
+                      + {{ headDetection.detectedTables.value.filter(t => headDetection.selectedTables[t.table]).length }} service(s)
+                    </span>
+                  </button>
                 </div>
               </form>
             </template>
@@ -1303,6 +1684,79 @@ const saveQuickAddRecord = async () => {
 .hs-text-success { color: var(--hs-success); }
 .hs-text-muted { color: var(--hs-gray-400); }
 .purok-label { color: var(--hs-gray-400); margin-left: auto; font-size: var(--hs-font-size-xs); }
+
+/* Readonly input style */
+.hs-input--readonly {
+  background-color: var(--hs-gray-50) !important;
+  color: var(--hs-gray-600);
+  cursor: default;
+}
+
+/* ── Form Section Grouping ── */
+.form-section {
+  margin-bottom: 20px;
+  padding-bottom: 4px;
+}
+.form-section:last-of-type {
+  margin-bottom: 8px;
+}
+.form-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hs-gray-100);
+}
+.form-section-label strong {
+  display: block;
+  font-size: 13px;
+  color: var(--hs-gray-800);
+  margin-bottom: 1px;
+}
+.form-section-label span:not(.mdi) {
+  display: block;
+  font-size: 11px;
+  color: var(--hs-gray-400);
+  font-weight: 400;
+  line-height: 1.4;
+}
+.form-section-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 16px;
+}
+.form-section-icon--primary {
+  background: var(--hs-primary-bg, rgba(91, 132, 30, 0.1));
+  color: var(--hs-primary);
+}
+.form-section-icon--info {
+  background: var(--hs-info-bg, rgba(33, 150, 243, 0.1));
+  color: var(--hs-info, #2196F3);
+}
+.form-section-icon--success {
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+}
+.form-section-icon--danger {
+  background: rgba(244, 67, 54, 0.1);
+  color: #F44336;
+}
+
+/* Submit button service count badge */
+.btn-service-count {
+  margin-left: 6px;
+  padding: 1px 8px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
 
 /* Searchable Head Dropdown */
 .head-search-wrapper {
@@ -1451,6 +1905,27 @@ const saveQuickAddRecord = async () => {
   border-bottom: 1px solid var(--hs-gray-100);
 }
 .dir-member-row:last-child { border-bottom: none; }
+.dir-member-highlight {
+  background: var(--hs-primary-bg, #f0f7e8);
+  border-radius: var(--hs-radius-md);
+  padding-left: 8px;
+  padding-right: 8px;
+  border-left: 3px solid var(--hs-primary);
+}
+.dir-member-search-result {
+  background: var(--hs-white);
+  border: 1px solid var(--hs-gray-200);
+  border-radius: var(--hs-radius-md);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+}
+.dir-member-head-label {
+  font-size: 10px; color: var(--hs-primary); font-style: italic;
+}
+.dir-search-count {
+  font-size: var(--hs-font-size-xs); color: var(--hs-gray-500);
+  margin-bottom: 8px; font-weight: 500;
+}
 .dir-member-icon {
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--hs-info-bg); color: var(--hs-info);
@@ -1479,9 +1954,106 @@ const saveQuickAddRecord = async () => {
 .hs-checkbox-label { display: flex; align-items: center; gap: 6px; font-size: var(--hs-font-size-sm); cursor: pointer; }
 .hs-text-sm { font-size: var(--hs-font-size-sm); }
 
+/* Service Detection Panel */
+.svc-detection-panel {
+  margin: 16px 0;
+  padding: 16px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #f5f0ff 100%);
+  border-radius: 10px;
+  border: 1px solid #d0e3ff;
+}
+.svc-detection-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--hs-primary);
+}
+.svc-detection-header > .mdi {
+  font-size: 20px;
+  margin-top: 1px;
+}
+.svc-detection-header strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.svc-detection-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--hs-gray-500);
+  font-weight: 400;
+}
+
+.svc-table-card {
+  background: var(--hs-white);
+  border: 1px solid var(--hs-gray-100);
+  border-radius: var(--hs-radius-lg);
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: opacity 150ms ease, border-color 150ms ease;
+}
+.svc-table-card:last-child { margin-bottom: 0; }
+.svc-table-card--disabled {
+  opacity: 0.55;
+  border-color: var(--hs-gray-100);
+}
+.svc-table-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 100ms ease;
+}
+.svc-table-card-header:hover {
+  background: var(--hs-gray-50);
+}
+.svc-table-card-header strong {
+  font-size: var(--hs-font-size-sm);
+  color: var(--hs-gray-800);
+}
+.svc-table-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--hs-primary);
+  flex-shrink: 0;
+}
+.svc-table-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+.svc-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--hs-primary-bg);
+  color: var(--hs-primary);
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.svc-table-card-body {
+  padding: 8px 14px 14px;
+  border-top: 1px solid var(--hs-gray-100);
+  background: var(--hs-gray-50);
+}
+.svc-no-extra {
+  font-size: var(--hs-font-size-xs);
+  color: var(--hs-gray-400);
+  font-style: italic;
+  margin: 2px 0 0;
+}
+
 @media (max-width: 640px) {
   .dir-members { padding-left: 16px; }
   .record-type-grid { grid-template-columns: 1fr 1fr; }
   .inv-toolbar { flex-direction: column; align-items: stretch; }
+  .svc-table-card-header { flex-wrap: wrap; }
+  .svc-table-badges { margin-left: 0; margin-top: 4px; }
 }
 </style>

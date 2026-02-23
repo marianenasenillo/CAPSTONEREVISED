@@ -2,6 +2,8 @@
 import DashboardView from '@/components/DashboardView.vue'
 import FpsExport from '@/components/reports/FpsExport.vue'
 import html2canvas from 'html2canvas'
+
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import jsPDF from 'jspdf'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -346,7 +348,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.surname }}</td>
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.mother_name }}</td>
-                <td>{{ record.sex }}</td>
+                <td>{{ sexDisplay(record.sex) }}</td>
                 <td>{{ record.birthday }}</td>
                 <td>{{ record.age }}</td>
                 <td>
@@ -422,8 +424,8 @@ const exportreportPdf = async () => {
                 <div class="hs-form-group">
                   <label class="hs-label">Sex</label>
                   <select v-model="editRecord.sex" class="hs-select">
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
                   </select>
                 </div>
                 <div class="hs-form-group">

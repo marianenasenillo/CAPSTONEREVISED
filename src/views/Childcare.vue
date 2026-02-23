@@ -143,7 +143,7 @@ onMounted(async () => {
                 <div class="hs-form-group"><label class="hs-label">Age</label><input type="number" v-model="age" class="hs-input" min="0" /></div>
                 <div class="hs-form-group"><label class="hs-label">Birthdate</label><input type="date" v-model="birthdate" class="hs-input" /></div>
                 <div class="hs-form-group"><label class="hs-label">Gender</label>
-                  <select v-model="gender" class="hs-select"><option value="">Select</option><option value="Female">Female</option><option value="Male">Male</option></select>
+                  <select v-model="gender" class="hs-select"><option value="">Select</option><option value="F">Female</option><option value="M">Male</option></select>
                 </div>
               </div>
               <div class="hs-form-row">

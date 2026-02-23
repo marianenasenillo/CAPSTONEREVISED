@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { supabase } from '@/utils/supabase'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PieController, BarController } from 'chart.js'
 
@@ -19,6 +19,11 @@ let barangayChart = null
 let genderChart = null
 
 const discussionText = ref('')
+
+const reportingPeriod = computed(() => {
+  const now = new Date()
+  return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+})
 
 onMounted(async () => {
   const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -156,8 +161,10 @@ const generateDiscussion = () => {
   let text = `<h4>Discussion</h4>
 <p>For ${selectedBarangay.value}, the household distribution per purok shows `
 
-  if (purokLabels.length > 0) {
-    text += `the highest number of households in ${purokLabels[purokData.indexOf(Math.max(...purokData))] || 'unknown'} (${Math.max(...purokData) || 0} households). `
+  if (purokLabels.length > 0 && purokData.length > 0) {
+    const maxIdx = purokData.indexOf(Math.max(...purokData))
+    const topPurok = maxIdx >= 0 ? (purokLabels[maxIdx] || 'N/A') : 'N/A'
+    text += `the highest number of households in ${topPurok} (${Math.max(...purokData) || 0} households). `
   }
 
   if (ageData.length > 0) {
@@ -196,7 +203,7 @@ const generateDiscussion = () => {
                 <h4 class="fw-bold">Household Demographic Report</h4>
                 <p>
                   {{ selectedBarangay }} – Municipality of Buenavista, Agusan del Norte <br />
-                  Reporting Period: September 2025
+                  Reporting Period: {{ reportingPeriod }}
                 </p>
               </div>
                <div class="container py-4">

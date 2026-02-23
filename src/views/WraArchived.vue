@@ -111,6 +111,25 @@ const restoreRecord = async (record) => {
     toast.error('Failed to restore record. Please try again.')
   }
 }
+
+const deleteRecord = async (record) => {
+  if (!confirm('Are you sure you want to permanently delete this record? This action cannot be undone.')) return
+
+  try {
+    const { error } = await supabase
+      .from('wra_records')
+      .delete()
+      .eq('id', record.id)
+
+    if (error) throw error
+
+    wraRecords.value = wraRecords.value.filter(r => r.id !== record.id)
+    toast.success('Record deleted permanently!')
+  } catch (error) {
+    console.error('Error deleting record:', error)
+    toast.error('Failed to delete record. Please try again.')
+  }
+}
 </script>
 
 <template>
@@ -195,6 +214,7 @@ const restoreRecord = async (record) => {
                 <td>{{ record.changeMethod }}</td>
                 <td>
                   <button class="hs-btn hs-btn-primary" @click="restoreRecord(record)"><span class="mdi mdi-restore"></span> Restore</button>
+                  <button class="hs-btn hs-btn-danger" @click="deleteRecord(record)"><span class="mdi mdi-delete"></span> Delete</button>
                 </td>
               </tr>
               <tr v-if="paginatedData.length === 0">

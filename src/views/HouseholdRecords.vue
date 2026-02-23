@@ -2,6 +2,8 @@
 import HouseholdExport from '@/components/reports/HouseholdExport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { ref, onMounted, computed, watch } from 'vue'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
@@ -29,6 +31,112 @@ const showEditModal = ref(false)
 
 const editingMember = ref(null)
 const showEditMemberModal = ref(false)
+
+const memberSearchQuery = ref('')
+const showAddMemberModal = ref(false)
+const newMember = ref({})
+
+const initNewMember = () => {
+  if (!selectedHead.value) return
+  newMember.value = {
+    head_id: selectedHead.value.head_id,
+    barangay: selectedHead.value.barangay || '',
+    purok: selectedHead.value.purok || '',
+    lastname: '',
+    firstname: '',
+    middlename: '',
+    suffix: '',
+    relationship: '',
+    birthdate: '',
+    age: '',
+    sex: '',
+    civil_status: '',
+    education: '',
+    religion: '',
+    ethnicity: '',
+    is_4ps_member: false,
+    philhealth_id: '',
+    medical_history: '',
+    fp_method_used: '',
+    water_source: '',
+    toilet_facility: '',
+  }
+  showAddMemberModal.value = true
+}
+
+const saveNewMember = async () => {
+  if (!newMember.value.firstname || !newMember.value.lastname) {
+    toast.warning('First name and last name are required.')
+    return
+  }
+  try {
+    const payload = { ...newMember.value }
+    if (payload.age !== '' && payload.age != null) payload.age = parseInt(payload.age)
+    else payload.age = null
+    if (!payload.birthdate) payload.birthdate = null
+    // Normalize sex for char(1) column
+    if (payload.sex === 'Male') payload.sex = 'M'
+    else if (payload.sex === 'Female') payload.sex = 'F'
+
+    const { error } = await supabase.from('household_members').insert(payload)
+    if (error) {
+      console.error('[addMember] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(payload, null, 2))
+      throw error
+    }
+
+    toast.success('Member added successfully.')
+    showAddMemberModal.value = false
+    if (selectedHead.value) await viewMembers(selectedHead.value)
+  } catch (e) {
+    console.error('[addMember] Error:', e?.code, e?.message, e)
+    toast.error(`Error adding member: ${e?.message || e}`)
+  }
+}
+
+const deleteMember = async (member) => {
+  if (!confirm(`Delete member "${member.firstname} ${member.lastname}"? This action cannot be undone.`)) return
+  try {
+    const { error } = await supabase
+      .from('household_members')
+      .delete()
+      .eq('member_id', member.member_id)
+    if (error) throw error
+
+    toast.success('Member deleted successfully.')
+    if (selectedHead.value) await viewMembers(selectedHead.value)
+  } catch (e) {
+    console.error(e)
+    toast.error('Error deleting member: ' + (e.message || e))
+  }
+}
+
+const archiveMember = async (member) => {
+  if (!confirm(`Archive member "${member.firstname} ${member.lastname}"?`)) return
+  try {
+    const { error } = await supabase
+      .from('household_members')
+      .update({ is_archived: true, archived_at: new Date().toISOString() })
+      .eq('member_id', member.member_id)
+    if (error) throw error
+
+    toast.success('Member archived successfully.')
+    if (selectedHead.value) await viewMembers(selectedHead.value)
+  } catch (e) {
+    console.error(e)
+    toast.error('Error archiving member: ' + (e.message || e))
+  }
+}
+
+const filteredModalMembers = computed(() => {
+  if (!memberSearchQuery.value.trim()) return members.value
+  const q = memberSearchQuery.value.toLowerCase()
+  return members.value.filter(m =>
+    (m.lastname && m.lastname.toLowerCase().includes(q)) ||
+    (m.firstname && m.firstname.toLowerCase().includes(q)) ||
+    (m.middlename && m.middlename.toLowerCase().includes(q)) ||
+    (m.relationship && m.relationship.toLowerCase().includes(q))
+  )
+})
 
 const showReport = ref(false)
 const reportRef = ref(null)
@@ -118,7 +226,8 @@ const viewMembers = async (head) => {
     const { data, error: err } = await supabase
       .from('household_members')
       .select('*')
-      .eq('head_id', head.head_id) // if your PK is head_id instead of id
+      .eq('head_id', head.head_id)
+      .eq('is_archived', false)
 
     if (err) throw err
     members.value = data
@@ -187,35 +296,44 @@ const editRecord = (record) => {
 
 const saveEdit = async () => {
   try {
+    // Normalize sex for char(1) column
+    const sexVal = editHead.value.sex
+    const normalizedSex = (sexVal === 'Male') ? 'M' : (sexVal === 'Female') ? 'F' : (sexVal || null)
+
+    const headPayload = {
+      purok: editHead.value.purok,
+      lastname: editHead.value.lastname,
+      firstname: editHead.value.firstname,
+      middlename: editHead.value.middlename,
+      suffix: editHead.value.suffix,
+      birthdate: editHead.value.birthdate || null,
+      age: editHead.value.age !== '' && editHead.value.age != null ? parseInt(editHead.value.age) : null,
+      sex: normalizedSex,
+      civil_status: editHead.value.civil_status || null,
+      contact_number: editHead.value.contact_number || null,
+      occupation: editHead.value.occupation || null,
+      no_of_families: editHead.value.no_of_families,
+      population: editHead.value.population,
+      female_count: editHead.value.female_count,
+      male_count: editHead.value.male_count
+    }
+
     const { error } = await supabase
       .from('household_heads')
-      .update({
-        purok: editHead.value.purok,
-        lastname: editHead.value.lastname,
-        firstname: editHead.value.firstname,
-        middlename: editHead.value.middlename,
-        suffix: editHead.value.suffix,
-        birthdate: editHead.value.birthdate || null,
-        age: editHead.value.age !== '' && editHead.value.age != null ? parseInt(editHead.value.age) : null,
-        sex: editHead.value.sex || null,
-        civil_status: editHead.value.civil_status || null,
-        contact_number: editHead.value.contact_number || null,
-        occupation: editHead.value.occupation || null,
-        no_of_families: editHead.value.no_of_families,
-        population: editHead.value.population,
-        female_count: editHead.value.female_count,
-        male_count: editHead.value.male_count
-      })
+      .update(headPayload)
       .eq('head_id', editHead.value.head_id)
 
-    if (error) throw error
+    if (error) {
+      console.error('[editHead] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(headPayload, null, 2))
+      throw error
+    }
 
     toast.success('Record updated successfully.')
     showEditModal.value = false
     await fetchHeadRecords()
   } catch (e) {
-    console.error(e)
-    toast.error('Error updating record.')
+    console.error('[editHead] Error:', e?.code, e?.message, e)
+    toast.error(`Error updating record: ${e?.message || e}`)
   }
 }
 
@@ -226,38 +344,47 @@ const editMemberRecord = (member) => {
 
 const saveMemberEdit = async () => {
   try {
+    // Normalize sex for char(1) column
+    const sexVal = editingMember.value.sex
+    const normalizedSex = (sexVal === 'Male') ? 'M' : (sexVal === 'Female') ? 'F' : sexVal
+
+    const memberPayload = {
+      lastname: editingMember.value.lastname,
+      firstname: editingMember.value.firstname,
+      middlename: editingMember.value.middlename,
+      suffix: editingMember.value.suffix,
+      relationship: editingMember.value.relationship,
+      birthdate: editingMember.value.birthdate || null,
+      age: editingMember.value.age !== '' ? parseInt(editingMember.value.age) : null,
+      sex: normalizedSex,
+      civil_status: editingMember.value.civil_status,
+      education: editingMember.value.education,
+      religion: editingMember.value.religion,
+      ethnicity: editingMember.value.ethnicity,
+      is_4ps_member: editingMember.value.is_4ps_member,
+      philhealth_id: editingMember.value.philhealth_id,
+      medical_history: editingMember.value.medical_history,
+      fp_method_used: editingMember.value.fp_method_used,
+      water_source: editingMember.value.water_source,
+      toilet_facility: editingMember.value.toilet_facility,
+    }
+
     const { error } = await supabase
       .from('household_members')
-      .update({
-        lastname: editingMember.value.lastname,
-        firstname: editingMember.value.firstname,
-        middlename: editingMember.value.middlename,
-        suffix: editingMember.value.suffix,
-        relationship: editingMember.value.relationship,
-        birthdate: editingMember.value.birthdate || null,
-        age: editingMember.value.age !== '' ? parseInt(editingMember.value.age) : null,
-        sex: editingMember.value.sex,
-        civil_status: editingMember.value.civil_status,
-        education: editingMember.value.education,
-        religion: editingMember.value.religion,
-        ethnicity: editingMember.value.ethnicity,
-        is_4ps_member: editingMember.value.is_4ps_member,
-        philhealth_id: editingMember.value.philhealth_id,
-        medical_history: editingMember.value.medical_history,
-        fp_method_used: editingMember.value.fp_method_used,
-        water_source: editingMember.value.water_source,
-        toilet_facility: editingMember.value.toilet_facility,
-      })
+      .update(memberPayload)
       .eq('member_id', editingMember.value.member_id)
 
-    if (error) throw error
+    if (error) {
+      console.error('[editMember] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(memberPayload, null, 2))
+      throw error
+    }
 
     toast.success('Member updated successfully.')
     showEditMemberModal.value = false
     if (selectedHead.value) await viewMembers(selectedHead.value)
   } catch (e) {
-    console.error(e)
-    toast.error('Error updating member.')
+    console.error('[editMember] Error:', e?.code, e?.message, e)
+    toast.error(`Error updating member: ${e?.message || e}`)
   }
 }
 
@@ -398,8 +525,8 @@ const exportreportPdf = async () => {
           </select>
           <select v-model="selectedSex" class="hs-select hs-w-auto">
             <option value="">Sex</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
           </select>
           <select v-model="selectedCivilStatus" class="hs-select hs-w-auto">
             <option value="">Civil Status</option>
@@ -457,7 +584,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.suffix }}</td>
                 <td>{{ record.birthdate || '-' }}</td>
                 <td>{{ record.age ?? '-' }}</td>
-                <td>{{ record.sex || '-' }}</td>
+                <td>{{ sexDisplay(record.sex) }}</td>
                 <td>{{ record.civil_status || '-' }}</td>
                 <td>{{ record.contact_number || '-' }}</td>
                 <td>{{ record.occupation || '-' }}</td>
@@ -509,6 +636,20 @@ const exportreportPdf = async () => {
             <button class="hs-modal-close" @click="showMembersModal = false">&times;</button>
           </div>
           <div class="hs-modal-body">
+            <!-- Search & Add toolbar -->
+            <div class="members-toolbar">
+              <div class="hs-search-box">
+                <span class="mdi mdi-magnify"></span>
+                <input v-model="memberSearchQuery" type="search" placeholder="Search members..." />
+              </div>
+              <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning hs-btn-sm" @click="router.push('/membersarchived')">
+                <span class="mdi mdi-archive-outline"></span> Archived
+              </button>
+              <button class="hs-btn hs-btn-primary hs-btn-sm" @click="initNewMember">
+                <span class="mdi mdi-plus"></span> Add Member
+              </button>
+            </div>
+
             <div v-if="members.length === 0" class="members-empty">
               <p>No members found for this head.</p>
             </div>
@@ -535,14 +676,14 @@ const exportreportPdf = async () => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="m in members" :key="m.member_id">
+                  <tr v-for="m in filteredModalMembers" :key="m.member_id">
                     <td>{{ m.lastname }}</td>
                     <td>{{ m.firstname }}</td>
                     <td>{{ m.middlename }}</td>
                     <td>{{ m.relationship }}</td>
                     <td>{{ m.birthdate }}</td>
                     <td>{{ m.age }}</td>
-                    <td>{{ m.sex }}</td>
+                    <td>{{ sexDisplay(m.sex) }}</td>
                     <td>{{ m.civil_status }}</td>
                     <td>{{ m.education }}</td>
                     <td>{{ m.religion }}</td>
@@ -552,23 +693,170 @@ const exportreportPdf = async () => {
                     <td>{{ m.fp_method_used || '-' }}</td>
                     <td>{{ m.medical_history || '-' }}</td>
                     <td>
-                      <button class="hs-btn hs-btn-primary hs-btn-sm" @click="editMemberRecord(m)">
-                        <span class="mdi mdi-pencil-outline"></span> Edit
-                      </button>
+                      <div class="member-action-btns">
+                        <button class="hs-btn hs-btn-primary hs-btn-sm" @click="editMemberRecord(m)" title="Edit">
+                          <span class="mdi mdi-pencil-outline"></span>
+                        </button>
+                        <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning hs-btn-sm" @click="archiveMember(m)" title="Archive">
+                          <span class="mdi mdi-archive-outline"></span>
+                        </button>
+                        <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-danger hs-btn-sm" @click="deleteMember(m)" title="Delete">
+                          <span class="mdi mdi-delete-outline"></span>
+                        </button>
+                      </div>
                     </td>
+                  </tr>
+                  <tr v-if="filteredModalMembers.length === 0 && members.length > 0">
+                    <td colspan="16" class="hs-table-empty">No members match your search.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
           <div class="hs-modal-footer">
+            <span class="hs-text-muted" style="font-size: var(--hs-font-size-xs);">{{ members.length }} member(s)</span>
             <button class="hs-btn hs-btn-secondary" @click="showMembersModal = false">Close</button>
           </div>
         </div>
       </div>
 
+      <!-- Add Member Modal -->
+      <div v-if="showAddMemberModal" class="hs-modal-overlay" style="z-index: 9100;" @click.self="showAddMemberModal = false">
+        <div class="hs-modal hs-modal-lg">
+          <div class="hs-modal-header">
+            <h3>Add Member to: {{ selectedHead?.firstname }} {{ selectedHead?.lastname }}</h3>
+            <button class="hs-modal-close" @click="showAddMemberModal = false">&times;</button>
+          </div>
+          <div class="hs-modal-body">
+            <form @submit.prevent="saveNewMember">
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Last Name <span class="hs-text-danger">*</span></label>
+                  <input v-model="newMember.lastname" type="text" class="hs-input" required>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">First Name <span class="hs-text-danger">*</span></label>
+                  <input v-model="newMember.firstname" type="text" class="hs-input" required>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Middle Name</label>
+                  <input v-model="newMember.middlename" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Suffix</label>
+                  <input v-model="newMember.suffix" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Relationship</label>
+                  <select v-model="newMember.relationship" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Wife">Wife</option>
+                    <option value="Husband">Husband</option>
+                    <option value="Son">Son</option>
+                    <option value="Daughter">Daughter</option>
+                    <option value="Mother">Mother</option>
+                    <option value="Father">Father</option>
+                    <option value="Brother">Brother</option>
+                    <option value="Sister">Sister</option>
+                    <option value="Grandchild">Grandchild</option>
+                    <option value="Relative">Relative</option>
+                    <option value="Non-relative">Non-relative</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Birthdate</label>
+                  <input v-model="newMember.birthdate" type="date" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Age</label>
+                  <input v-model.number="newMember.age" type="number" class="hs-input" min="0">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Sex</label>
+                  <select v-model="newMember.sex" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Civil Status</label>
+                  <select v-model="newMember.civil_status" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Separated">Separated</option>
+                    <option value="Live-in">Live-in</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Education</label>
+                  <input v-model="newMember.education" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Religion</label>
+                  <input v-model="newMember.religion" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Ethnicity</label>
+                  <input v-model="newMember.ethnicity" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">PhilHealth ID</label>
+                  <input v-model="newMember.philhealth_id" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">4Ps Member</label>
+                  <select v-model="newMember.is_4ps_member" class="hs-select">
+                    <option :value="false">No</option>
+                    <option :value="true">Yes</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Medical History</label>
+                  <input v-model="newMember.medical_history" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">FP Method Used</label>
+                  <input v-model="newMember.fp_method_used" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Water Source</label>
+                  <input v-model="newMember.water_source" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Toilet Facility</label>
+                  <input v-model="newMember.toilet_facility" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-modal-footer hs-modal-footer--flat">
+                <button type="button" class="hs-btn hs-btn-secondary" @click="showAddMemberModal = false">Cancel</button>
+                <button type="submit" class="hs-btn hs-btn-primary"><span class="mdi mdi-plus"></span> Add Member</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- Edit Member Modal -->
-      <div v-if="showEditMemberModal && editingMember" class="hs-modal-overlay" @click.self="showEditMemberModal = false">
+      <div v-if="showEditMemberModal && editingMember" class="hs-modal-overlay" style="z-index: 9100;" @click.self="showEditMemberModal = false">
         <div class="hs-modal hs-modal-lg">
           <div class="hs-modal-header">
             <h3>Edit Member: {{ editingMember.firstname }} {{ editingMember.lastname }}</h3>
@@ -626,8 +914,8 @@ const exportreportPdf = async () => {
                 <div class="hs-form-group">
                   <label class="hs-label">Sex</label>
                   <select v-model="editingMember.sex" class="hs-select">
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
                   </select>
                 </div>
               </div>
@@ -750,8 +1038,8 @@ const exportreportPdf = async () => {
                   <label class="hs-label">Sex</label>
                   <select v-model="editHead.sex" class="hs-select">
                     <option value="">Select</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
                   </select>
                 </div>
                 <div class="hs-form-group">
@@ -826,4 +1114,8 @@ const exportreportPdf = async () => {
 .members-modal { max-width: 95vw; }
 .members-empty { text-align: center; padding: 24px; }
 .members-scroll { overflow-x: auto; }
+.members-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.members-toolbar .hs-search-box { flex: 1; max-width: 320px; }
+.member-action-btns { display: flex; gap: 4px; }
+.hs-modal-footer--flat { border-top: none; padding-top: 8px; }
 </style>

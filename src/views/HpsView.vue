@@ -225,30 +225,42 @@ const closeModal = () => {
   showHeadDropdown.value = false
 }
 
+// Normalize sex value to single character for DB char(1) column
+const normalizeSex = (val) => {
+  if (!val) return null
+  const v = val.toString().trim().toLowerCase()
+  if (v === 'male' || v === 'm') return 'M'
+  if (v === 'female' || v === 'f') return 'F'
+  return val
+}
+
 const saveHead = async () => {
   try {
-    const { data, error } = await supabase.from('household_heads').insert([
-      {
-        barangay: headBarangay.value,
-        purok: headPurok.value,
-        lastname: headLastname.value,
-        firstname: headFirstname.value,
-        middlename: headMiddlename.value,
-        suffix: headSuffix.value,
-        no_of_families: headFamilyCount.value ? parseInt(headFamilyCount.value) : null,
-        birthdate: headBirthdate.value || null,
-        age: headAge.value ? parseInt(headAge.value) : null,
-        sex: headSex.value || null,
-        civil_status: headCivilStatus.value || null,
-        contact_number: headContactNumber.value || null,
-        occupation: headOccupation.value || null,
-        population: null,
-        female_count: null,
-        male_count: null,
-      },
-    ])
+    const headPayload = {
+      barangay: headBarangay.value,
+      purok: headPurok.value,
+      lastname: headLastname.value,
+      firstname: headFirstname.value,
+      middlename: headMiddlename.value,
+      suffix: headSuffix.value,
+      no_of_families: headFamilyCount.value ? parseInt(headFamilyCount.value) : null,
+      birthdate: headBirthdate.value || null,
+      age: headAge.value ? parseInt(headAge.value) : null,
+      sex: normalizeSex(headSex.value),
+      civil_status: headCivilStatus.value || null,
+      contact_number: headContactNumber.value || null,
+      occupation: headOccupation.value || null,
+      population: null,
+      female_count: null,
+      male_count: null,
+    }
 
-    if (error) throw error
+    const { data, error } = await supabase.from('household_heads').insert([headPayload])
+
+    if (error) {
+      console.error('[saveHead] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(headPayload, null, 2))
+      throw error
+    }
     alert('Household head saved successfully!')
     closeModal()
 
@@ -266,8 +278,8 @@ const saveHead = async () => {
     headContactNumber.value = ''
     headOccupation.value = ''
   } catch (err) {
-    console.error(err)
-    alert('Error saving household head record.')
+    console.error('[saveHead] Error:', err?.code, err?.message, err)
+    alert(`Error saving household head: ${err?.message || 'Unknown error'}`)
   }
 }
 
@@ -278,40 +290,43 @@ const saveHousehold = async () => {
       return
     }
 
-    const { data, error } = await supabase.from('household_members').insert([
-      {
-        head_id: selectedHeadId.value,
-        barangay: barangay.value,
-        date_visit: dateVisit.value || null,
-        relationship: relationship.value,
-        lastname: lastname.value,
-        firstname: firstname.value,
-        middlename: middlename.value,
-        suffix: suffix.value,
-        birthdate: birthdate.value || null,
-        age: age.value !== '' ? parseInt(age.value) : null,
-        sex: sex.value,
-        civil_status: civilStatus.value,
-        education: education.value,
-        religion: religion.value,
-        ethnicity: ethnicity.value,
-        is_4ps_member: is4psMember.value === 'Yes',
-        household_id_4ps: householdId4ps.value,
-        philhealth_id: philhealthId.value,
-        membership_type: membershipType.value,
-        philhealth_category: philhealthCategory.value,
-        medical_history: medicalHistory.value,
-        age_group: ageGroup.value,
-        lmp: lmp.value || null,
-        using_fp_method: usingFpMethod.value === 'Yes',
-        fp_method_used: fpMethodUsed.value,
-        fp_status: fpStatus.value,
-        water_source: waterSource.value,
-        toilet_facility: toiletFacility.value,
-      },
-    ])
+    const memberPayload = {
+      head_id: selectedHeadId.value,
+      barangay: barangay.value,
+      date_visit: dateVisit.value || null,
+      relationship: relationship.value,
+      lastname: lastname.value,
+      firstname: firstname.value,
+      middlename: middlename.value,
+      suffix: suffix.value,
+      birthdate: birthdate.value || null,
+      age: age.value !== '' ? parseInt(age.value) : null,
+      sex: normalizeSex(sex.value),
+      civil_status: civilStatus.value,
+      education: education.value,
+      religion: religion.value,
+      ethnicity: ethnicity.value,
+      is_4ps_member: is4psMember.value === 'Yes',
+      household_id_4ps: householdId4ps.value,
+      philhealth_id: philhealthId.value,
+      membership_type: membershipType.value,
+      philhealth_category: philhealthCategory.value,
+      medical_history: medicalHistory.value,
+      age_group: ageGroup.value,
+      lmp: lmp.value || null,
+      using_fp_method: usingFpMethod.value === 'Yes',
+      fp_method_used: fpMethodUsed.value,
+      fp_status: fpStatus.value,
+      water_source: waterSource.value,
+      toilet_facility: toiletFacility.value,
+    }
 
-    if (error) throw error
+    const { data, error } = await supabase.from('household_members').insert([memberPayload])
+
+    if (error) {
+      console.error('[saveMember] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(memberPayload, null, 2))
+      throw error
+    }
     alert('Household member saved successfully!')
     closeModal()
 
@@ -347,8 +362,8 @@ const saveHousehold = async () => {
     waterSource.value = ''
     toiletFacility.value = ''
   } catch (err) {
-    console.error(err)
-    alert('Error saving household member record.')
+    console.error('[saveMember] Error:', err?.code, err?.message, err)
+    alert(`Error saving member: ${err?.message || 'Unknown error'}`)
   }
 }
 </script>
@@ -543,8 +558,8 @@ const saveHousehold = async () => {
                     <label class="hs-label">Sex</label>
                     <select v-model="sex" class="hs-select">
                       <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
+                      <option value="M">Male</option>
+                      <option value="F">Female</option>
                     </select>
                   </div>
                   <div class="hs-form-group">
@@ -735,8 +750,8 @@ const saveHousehold = async () => {
                     <label class="hs-label">Sex</label>
                     <select v-model="headSex" class="hs-select">
                       <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
+                      <option value="M">Male</option>
+                      <option value="F">Female</option>
                     </select>
                   </div>
                   <div class="hs-form-group">

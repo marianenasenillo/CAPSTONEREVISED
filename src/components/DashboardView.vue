@@ -14,54 +14,199 @@ const showUserMenu = ref(false)
 const editDialog = ref(false)
 const uploading = ref(false)
 const newAvatar = ref(null)
+const avatarError = ref(false)
 const showNotifications = ref(false)
 const notifications = ref([])
-const unreadCount = computed(() => notifications.value.filter(n => !n.read).length)
+const notifPage = ref(1)
+const notifPageSize = 10
+const hasMoreNotifs = ref(false)
+const loadingNotifs = ref(false)
+const unreadCount = ref(0)
 
-async function fetchNotifications() {
-  const items = []
+async function fetchUnreadCount() {
+  try {
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('target_role', userRole.value || 'Admin')
+      .eq('is_read', false)
+    if (!error) unreadCount.value = count || 0
+  } catch { /* ignore */ }
+}
+
+async function syncLowStockNotifications() {
   try {
     const { data: meds } = await supabase.from('medicine').select('name, quantity').lte('quantity', 5)
-    if (meds) {
-      meds.forEach(m => {
-        items.push({
-          id: 'med-' + m.name,
+    if (!meds || meds.length === 0) return
+
+    const role = userRole.value || 'Admin'
+    // Check ALL notifications of this type in the last 24 hours (regardless of read state)
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: existing } = await supabase
+      .from('notifications')
+      .select('title')
+      .eq('type', 'low_stock')
+      .eq('target_role', role)
+      .gte('created_at', since)
+    const existingTitles = new Set((existing || []).map(n => n.title))
+
+    const newNotifs = []
+    for (const m of meds) {
+      const title = m.quantity === 0
+        ? `${m.name} is out of stock`
+        : `${m.name} is low stock (${m.quantity} left)`
+      if (!existingTitles.has(title)) {
+        newNotifs.push({
+          target_role: role,
+          type: 'low_stock',
+          title,
+          message: `Current quantity: ${m.quantity}`,
           icon: 'mdi-pill',
           color: m.quantity === 0 ? 'var(--hs-danger)' : 'var(--hs-warning)',
-          title: m.quantity === 0 ? `${m.name} is out of stock` : `${m.name} is low stock (${m.quantity} left)`,
-          time: 'Inventory',
-          read: false,
+          link: '/inventory',
         })
-      })
+      }
     }
+    if (newNotifs.length > 0) {
+      await supabase.from('notifications').insert(newNotifs)
+    }
+  } catch (err) {
+    console.error('Failed to sync low stock notifications', err)
+  }
+}
+
+async function syncUpcomingEventNotifications() {
+  try {
+    const role = userRole.value || 'Admin'
     const now = new Date()
     const weekLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    const { data: evts } = await supabase.from('events').select('text, start').gte('start', now.toISOString().slice(0, 10)).lte('start', weekLater.toISOString().slice(0, 10)).order('start', { ascending: true }).limit(5)
-    if (evts) {
-      evts.forEach(e => {
-        items.push({
-          id: 'evt-' + e.start + e.text,
+
+    const { data: evts } = await supabase
+      .from('events')
+      .select('id, text, start')
+      .gte('start', now.toISOString().slice(0, 10))
+      .lte('start', weekLater.toISOString().slice(0, 10))
+      .order('start', { ascending: true })
+      .limit(10)
+
+    if (!evts || evts.length === 0) return
+
+    // Check ALL notifications of this type in the last 24 hours (regardless of read state)
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: existing } = await supabase
+      .from('notifications')
+      .select('title')
+      .eq('type', 'upcoming_event')
+      .eq('target_role', role)
+      .gte('created_at', since)
+    const existingTitles = new Set((existing || []).map(n => n.title))
+
+    const newNotifs = []
+    for (const e of evts) {
+      const eventDate = new Date(e.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      const title = `Upcoming: ${e.text}`
+      if (!existingTitles.has(title)) {
+        newNotifs.push({
+          target_role: role,
+          type: 'upcoming_event',
+          title,
+          message: `Scheduled for ${eventDate}`,
           icon: 'mdi-calendar-alert',
           color: 'var(--hs-info)',
-          title: e.text,
-          time: `Upcoming: ${new Date(e.start).toLocaleDateString()}`,
-          read: false,
+          link: '/calendar',
         })
-      })
+      }
     }
+    if (newNotifs.length > 0) {
+      await supabase.from('notifications').insert(newNotifs)
+    }
+  } catch (err) {
+    console.error('Failed to sync event notifications', err)
+  }
+}
+
+async function fetchNotifications(loadMore = false) {
+  loadingNotifs.value = true
+  try {
+    const page = loadMore ? notifPage.value + 1 : 1
+    const from = (page - 1) * notifPageSize
+    const to = from + notifPageSize - 1
+
+    if (!loadMore) {
+      await syncLowStockNotifications()
+      await syncUpcomingEventNotifications()
+    }
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('target_role', userRole.value || 'Admin')
+      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    if (error) throw error
+
+    if (loadMore) {
+      notifications.value.push(...(data || []))
+    } else {
+      notifications.value = data || []
+    }
+    notifPage.value = page
+    hasMoreNotifs.value = (data || []).length === notifPageSize
+    await fetchUnreadCount()
   } catch (err) {
     console.error('Failed to fetch notifications', err)
   }
-  notifications.value = items
+  loadingNotifs.value = false
 }
 
 function toggleNotifications() {
   showNotifications.value = !showNotifications.value
   showUserMenu.value = false
+  if (showNotifications.value) {
+    notifPage.value = 1
+    fetchNotifications()
+  }
 }
 
-function markAllRead() {
-  notifications.value.forEach(n => (n.read = true))
+async function markAllRead() {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('target_role', userRole.value || 'Admin')
+    .eq('is_read', false)
+  if (!error) {
+    notifications.value.forEach(n => (n.is_read = true))
+    unreadCount.value = 0
+  }
+}
+
+async function markOneRead(n) {
+  if (n.is_read) return
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('id', n.id)
+  if (!error) {
+    n.is_read = true
+    unreadCount.value = Math.max(0, unreadCount.value - 1)
+  }
+}
+
+function loadMoreNotifications() {
+  fetchNotifications(true)
+}
+
+function formatNotifTime(dateStr) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diff = now - d
+  if (diff < 60000) return 'Just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`
+  return d.toLocaleDateString()
 }
 
 const sidebarCollapsed = ref(localStorage.getItem('hs_sidebar') === 'collapsed')
@@ -75,6 +220,8 @@ function onResize() {
   windowWidth.value = window.innerWidth
   if (!isMobile.value) mobileOpen.value = false
 }
+
+let notifInterval = null
 
 onMounted(async () => {
   window.addEventListener('resize', onResize)
@@ -91,9 +238,12 @@ onMounted(async () => {
       role: user.user_metadata?.role || 'Unknown',
       barangay: user.user_metadata?.barangay || 'N/A',
       purok: user.user_metadata?.purok || 'N/A',
-      avatar_url: user.user_metadata?.avatar_url || '/images/avatar.jpg',
+      avatar_url: user.user_metadata?.avatar_url || '',
     }
+    avatarError.value = !userData.value.avatar_url
     fetchNotifications()
+    // Refresh unread count every 60 seconds
+    notifInterval = setInterval(fetchUnreadCount, 60000)
   } else {
     router.push('/')
   }
@@ -101,6 +251,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  if (notifInterval) clearInterval(notifInterval)
 })
 
 function toggleSidebar() {
@@ -109,6 +260,16 @@ function toggleSidebar() {
 }
 
 function toggleGroup(group) {
+  // When sidebar is collapsed, expand it first so sub-items become visible
+  if (sidebarCollapsed.value && !isMobile.value) {
+    sidebarCollapsed.value = false
+    localStorage.setItem('hs_sidebar', 'expanded')
+    // Ensure the group is expanded after sidebar opens
+    if (!expandedGroups.value.includes(group)) {
+      expandedGroups.value.push(group)
+    }
+    return
+  }
   const idx = expandedGroups.value.indexOf(group)
   if (idx >= 0) expandedGroups.value.splice(idx, 1)
   else expandedGroups.value.push(group)
@@ -126,14 +287,6 @@ function navigateTo(path) {
   router.push(path)
   if (isMobile.value) mobileOpen.value = false
 }
-
-const navServices = [
-  { label: 'Household Profiling', icon: 'mdi-home-group', path: '/householdprofile' },
-  { label: 'Maternal Services', icon: 'mdi-mother-nurse', path: '/maternalservices' },
-  { label: 'Child Care', icon: 'mdi-baby-face-outline', path: '/childcare' },
-  { label: 'Family Planning', icon: 'mdi-account-heart', path: '/familyplanning' },
-  { label: 'Preventive Health', icon: 'mdi-shield-plus', path: '/preventivehealthservices' },
-]
 
 const navRecords = [
   { label: 'Household Records', icon: 'mdi-file-document-outline', path: '/hhpsrecords' },
@@ -188,6 +341,7 @@ async function uploadAvatar(event) {
     if (publicUrl) {
       newAvatar.value = publicUrl
       userData.value.avatar_url = publicUrl
+      avatarError.value = false
 
       const { error: updateError } = await supabase.auth.updateUser({
         data: { avatar_url: publicUrl }
@@ -275,39 +429,16 @@ async function saveProfile() {
           <span v-if="!sidebarCollapsed || isMobile" class="hs-nav-label">Dashboard</span>
         </button>
 
-        <!-- Health Services Group (BHW only) -->
-        <div v-if="userRole === 'BHW'" class="hs-nav-group">
-          <div v-if="!sidebarCollapsed || isMobile" class="hs-nav-section-label" style="margin-top: 6px;">Services</div>
-          <button
-            class="hs-nav-group-toggle"
-            @click="toggleGroup('services')"
-            :title="sidebarCollapsed && !isMobile ? 'Health Services' : ''"
-          >
-            <span class="mdi mdi-medical-bag hs-nav-icon"></span>
-            <template v-if="!sidebarCollapsed || isMobile">
-              <span class="hs-nav-label">Health Services</span>
-              <span
-                class="mdi hs-nav-chevron"
-                :class="isGroupExpanded('services') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-              ></span>
-            </template>
-          </button>
-          <div
-            v-if="isGroupExpanded('services') && (!sidebarCollapsed || isMobile)"
-            class="hs-nav-subitems"
-          >
-            <button
-              v-for="item in navServices"
-              :key="item.path"
-              class="hs-nav-item sub"
-              :class="{ active: isActive(item.path) }"
-              @click="navigateTo(item.path)"
-            >
-              <span :class="'mdi ' + item.icon + ' hs-nav-icon'"></span>
-              <span class="hs-nav-label">{{ item.label }}</span>
-            </button>
-          </div>
-        </div>
+        <!-- Household Profiling (BHW only) -->
+        <button
+          v-if="userRole === 'BHW'"
+          class="hs-nav-item"
+          :class="{ active: isActive('/householdprofile') }"
+          @click="navigateTo('/householdprofile')"
+        >
+          <span class="mdi mdi-home-group hs-nav-icon"></span>
+          <span v-if="!sidebarCollapsed || isMobile" class="hs-nav-label">Household Profiling</span>
+        </button>
 
         <!-- Service Eligibility (BHW standalone) -->
         <button
@@ -446,15 +577,27 @@ async function saveProfile() {
               <button v-if="unreadCount > 0" class="hs-btn hs-btn-ghost hs-btn-sm" @click="markAllRead">Mark all read</button>
             </div>
             <div class="notification-scroll">
-              <div v-for="n in notifications" :key="n.id" class="hs-notification-item" :class="{ unread: !n.read }" @click="n.read = true">
-                <span class="mdi" :class="n.icon" :style="{ color: n.color }"></span>
+              <div v-if="loadingNotifs && notifications.length === 0" class="hs-empty-state">
+                <p>Loading...</p>
+              </div>
+              <div v-for="n in notifications" :key="n.id" class="hs-notification-item" :class="{ unread: !n.is_read }" @click="markOneRead(n)">
+                <div class="hs-notif-icon-wrap" :style="{ background: (n.color || 'var(--hs-info)') + '18' }">
+                  <span class="mdi" :class="n.icon || 'mdi-bell'" :style="{ color: n.color || 'var(--hs-info)' }"></span>
+                </div>
                 <div class="hs-notification-item-text">
                   <strong>{{ n.title }}</strong>
-                  <span>{{ n.time }}</span>
+                  <span v-if="n.message" class="hs-notif-message">{{ n.message }}</span>
+                  <span class="hs-notif-time">{{ formatNotifTime(n.created_at) }}</span>
                 </div>
+                <span v-if="!n.is_read" class="hs-notif-dot"></span>
               </div>
-              <div v-if="notifications.length === 0" class="hs-empty-state">
+              <div v-if="!loadingNotifs && notifications.length === 0" class="hs-empty-state">
                 <p>No notifications</p>
+              </div>
+              <div v-if="hasMoreNotifs" class="notif-load-more">
+                <button class="hs-btn hs-btn-ghost hs-btn-sm" :disabled="loadingNotifs" @click="loadMoreNotifications">
+                  {{ loadingNotifs ? 'Loading...' : 'Load more' }}
+                </button>
               </div>
             </div>
           </div>
@@ -466,7 +609,8 @@ async function saveProfile() {
               <span class="hs-user-role">{{ userData.role }}</span>
             </div>
             <div class="hs-avatar">
-              <img :src="userData.avatar_url" alt="Avatar" />
+              <img v-if="userData.avatar_url && !avatarError" :src="userData.avatar_url" alt="Avatar" @error="avatarError = true" />
+              <span v-else class="mdi mdi-account hs-avatar-fallback"></span>
             </div>
             <span class="mdi mdi-chevron-down hs-text-muted chevron-icon"></span>
           </div>
@@ -475,7 +619,8 @@ async function saveProfile() {
           <div v-if="showUserMenu" class="hs-user-dropdown" @click.stop>
             <div class="hs-user-dropdown-header">
               <div class="hs-avatar lg">
-                <img :src="userData.avatar_url" alt="Avatar" />
+                <img v-if="userData.avatar_url && !avatarError" :src="userData.avatar_url" alt="Avatar" @error="avatarError = true" />
+                <span v-else class="mdi mdi-account hs-avatar-fallback lg"></span>
               </div>
               <div>
                 <div class="hs-font-bold dropdown-name">{{ userData.full_name }}</div>
@@ -489,7 +634,7 @@ async function saveProfile() {
               </div>
               <div class="hs-user-detail">
                 <span class="mdi mdi-map-marker-outline"></span>
-                <span>{{ userData.barangay }}, Purok {{ userData.purok }}</span>
+                <span>{{ userData.barangay }}, {{ userData.purok }}</span>
               </div>
             </div>
             <div class="hs-user-dropdown-actions">
@@ -552,7 +697,8 @@ async function saveProfile() {
           </div>
           <div class="avatar-preview">
             <div class="hs-avatar lg hs-mx-auto">
-              <img :src="newAvatar || userData.avatar_url" alt="Preview" />
+              <img v-if="newAvatar || (userData.avatar_url && !avatarError)" :src="newAvatar || userData.avatar_url" alt="Preview" @error="avatarError = true" />
+              <span v-else class="mdi mdi-account hs-avatar-fallback lg"></span>
             </div>
           </div>
         </div>
@@ -640,7 +786,7 @@ async function saveProfile() {
   border: none;
   background: transparent;
   border-radius: var(--hs-radius-md);
-  color: rgba(255,255,255,0.5);
+  color: #ffffff;
   font-family: var(--hs-font-family);
   font-size: var(--hs-font-size-sm);
   font-weight: 400;
@@ -652,8 +798,8 @@ async function saveProfile() {
 }
 
 .hs-nav-item:hover {
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
 }
 
 .hs-nav-item.active {
@@ -671,12 +817,12 @@ async function saveProfile() {
   font-size: var(--hs-font-size-xs);
   padding-top: 6px;
   padding-bottom: 6px;
-  color: rgba(255,255,255,0.4);
+  color: #ffffff;
 }
 
 .hs-nav-item.sub:hover {
-  color: rgba(255,255,255,0.8);
-  background: rgba(255,255,255,0.06);
+  color: #ffffff;
+  background: rgba(255,255,255,0.1);
 }
 
 .hs-nav-item.sub.active {
@@ -710,7 +856,7 @@ async function saveProfile() {
   border: none;
   background: transparent;
   border-radius: var(--hs-radius-md);
-  color: rgba(255,255,255,0.5);
+  color: #ffffff;
   font-family: var(--hs-font-family);
   font-size: var(--hs-font-size-sm);
   font-weight: 400;
@@ -721,14 +867,14 @@ async function saveProfile() {
 }
 
 .hs-nav-group-toggle:hover {
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
 }
 
 .hs-nav-chevron {
   margin-left: auto;
   font-size: 14px;
-  color: rgba(255,255,255,0.25);
+  color: #ffffff;
 }
 
 .hs-nav-subitems {
@@ -746,7 +892,7 @@ async function saveProfile() {
   padding: 16px 10px 4px;
   font-size: 10px;
   font-weight: 500;
-  color: rgba(255,255,255,0.3);
+  color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -869,12 +1015,26 @@ async function saveProfile() {
   overflow: hidden;
   border: 1.5px solid var(--hs-gray-200);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hs-gray-100);
 }
 
 .hs-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.hs-avatar-fallback {
+  font-size: 18px;
+  color: var(--hs-gray-400);
+  line-height: 1;
+}
+
+.hs-avatar-fallback.lg {
+  font-size: 28px;
 }
 
 .hs-avatar.lg {
@@ -944,8 +1104,19 @@ async function saveProfile() {
   background: rgba(248, 113, 113, 0.1);
 }
 .notification-scroll {
-  max-height: 300px;
+  max-height: 400px;
   overflow-y: auto;
+}
+.hs-notif-time {
+  display: block;
+  font-size: 11px;
+  color: var(--hs-gray-400);
+  margin-top: 2px;
+}
+.notif-load-more {
+  text-align: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--hs-gray-100);
 }
 .chevron-icon {
   font-size: 18px;

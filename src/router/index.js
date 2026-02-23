@@ -30,6 +30,7 @@ const WraArchived = () => import('@/views/WraArchived.vue')
 const ChildcareArchived = () => import('@/views/ChildcareArchived.vue')
 const FamilyPlanningArchived = () => import('@/views/FamilyPlanningArchived.vue')
 const PreventiveHealthArchived = () => import('@/views/PreventiveHealthArchived.vue')
+const MembersArchived = () => import('@/views/MembersArchived.vue')
 const BorrowerProfiling = () => import('@/views/BorrowerProfiling.vue')
 const ServiceEligibility = () => import('@/views/ServiceEligibility.vue')
 
@@ -98,6 +99,7 @@ const router = createRouter({
 
         // Archived records (Admin)
         { path: 'hhpsarchived', name: 'hhpsarchived', component: HouseholdArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
+        { path: 'membersarchived', name: 'membersarchived', component: MembersArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
         { path: 'maternalarchived', name: 'maternalarchived', component: MaternalArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
         { path: 'wraarchived', name: 'wraarchived', component: WraArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
         { path: 'childcarearchived', name: 'childcarearchived', component: ChildcareArchived, meta: { requiresAdmin: true, minRole: 'admin' } },

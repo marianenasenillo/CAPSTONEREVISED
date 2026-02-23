@@ -1,6 +1,8 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { usePagination } from '@/composables/usePagination'
 import { supabase } from '@/utils/supabase.js'
 import { useToast } from '@/composables/useToast'
@@ -170,7 +172,7 @@ const restoreRecord = async (record) => {
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.mother_name }}</td>
-                <td>{{ record.sex }}</td>
+                <td>{{ sexDisplay(record.sex) }}</td>
                 <td>{{ record.birthday }}</td>
                 <td>{{ record.age }}</td>
                 <td>

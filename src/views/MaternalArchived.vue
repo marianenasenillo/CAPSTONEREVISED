@@ -90,6 +90,25 @@ const restoreRecord = async (record) => {
     toast.error('Failed to restore record. Please try again.')
   }
 }
+
+const deleteRecord = async (record) => {
+  if (!confirm(`Are you sure you want to delete this record? This action cannot be undone.`)) return
+
+  try {
+    const { error } = await supabase
+      .from('cervical_screening_records')
+      .delete()
+      .eq('id', record.id)
+
+    if (error) throw error
+
+    toast.success('Record deleted successfully.')
+    await fetchCervicalRecords()
+  } catch (e) {
+    console.error(e)
+    toast.error('Error deleting record.')
+  }
+}
 </script>
 
 <template>
@@ -152,6 +171,7 @@ const restoreRecord = async (record) => {
                 <td>{{ record.screened }}</td>
                 <td>
                   <button class="hs-btn hs-btn-primary" @click="restoreRecord(record)"><span class="mdi mdi-restore"></span> Restore</button>
+                  <button class="hs-btn hs-btn-danger" @click="deleteRecord(record)"><span class="mdi mdi-delete"></span> Delete</button>
                 </td>
               </tr>
               <tr v-if="paginatedData.length === 0">

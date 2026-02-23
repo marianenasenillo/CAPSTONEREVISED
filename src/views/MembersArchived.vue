@@ -1,33 +1,33 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-
-const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
 
-const router = useRouter()
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 const toast = useToast()
+const router = useRouter()
 const goBack = () => router.back()
 
 const loading = ref(true)
 const error = ref(null)
-const dewormingRecords = ref([])
+const memberRecords = ref([])
 const searchQuery = ref('')
 const selectedPurok = ref('')
 
 onMounted(async () => {
-  await fetchDewormingRecords()
+  await fetchArchivedMembers()
 })
 
 const filteredRecords = computed(() => {
-  let data = dewormingRecords.value
+  let data = memberRecords.value
   const q = String(searchQuery.value || '').trim().toLowerCase()
   if (q) {
     data = data.filter(r =>
-      String(r.surname).toLowerCase().includes(q) ||
-      String(r.firstname).toLowerCase().includes(q)
+      String(r.lastname).toLowerCase().includes(q) ||
+      String(r.firstname).toLowerCase().includes(q) ||
+      String(r.head_id).toLowerCase().includes(q)
     )
   }
   if (selectedPurok.value) {
@@ -39,12 +39,7 @@ const filteredRecords = computed(() => {
 const { currentPage, itemsPerPage, itemsPerPageOptions, totalItems, totalPages, paginatedData, startIndex, endIndex, visiblePages, goToPage, nextPage, prevPage, firstPage, lastPage, resetPage } = usePagination(filteredRecords)
 watch([searchQuery, selectedPurok], () => resetPage())
 
-const handleSearch = () => {
-  const el = document.querySelector('.hs-table-scroll')
-  if (el) el.scrollTop = 0
-}
-
-const fetchDewormingRecords = async () => {
+const fetchArchivedMembers = async () => {
   loading.value = true
   error.value = null
   try {
@@ -56,63 +51,51 @@ const fetchDewormingRecords = async () => {
     if (!userBarangay) throw new Error('No barangay assigned')
 
     const { data, error: err } = await supabase
-      .from('deworming_records')
+      .from('household_members')
       .select('*')
+      .eq('barangay', userBarangay)
       .eq('is_archived', true)
-      .order('created_at', { ascending: false })
+      .order('archived_at', { ascending: false })
 
     if (err) throw err
-    dewormingRecords.value = data
+    memberRecords.value = data
   } catch (e) {
     console.error(e)
-    error.value = 'Failed to load deworming records.'
+    error.value = 'Failed to load archived members.'
   } finally {
     loading.value = false
   }
 }
 
-const deleteRecord = async (record) => {
-  if (!confirm(`Are you sure you want to delete the deworming record for "${record.firstname} ${record.surname}"? This action cannot be undone.`)) {
-    return
-  }
-
+const restoreRecord = async (record) => {
+  if (!confirm(`Restore member "${record.firstname} ${record.lastname}"?`)) return
   try {
     const { error } = await supabase
-      .from('deworming_records')
-      .delete()
-      .eq('id', record.id)
-
+      .from('household_members')
+      .update({ is_archived: false, archived_at: null })
+      .eq('member_id', record.member_id)
     if (error) throw error
-
-    toast.success('Record deleted successfully.')
-    await fetchDewormingRecords()
+    toast.success('Member restored successfully.')
+    await fetchArchivedMembers()
   } catch (e) {
     console.error(e)
-    toast.error('Error deleting record.')
+    toast.error('Error restoring member.')
   }
 }
 
-const restoreRecord = async (record) => {
-  if (!confirm(`Are you sure you want to restore the deworming record for "${record.firstname} ${record.surname}"?`)) {
-    return
-  }
-
+const deleteRecord = async (record) => {
+  if (!confirm(`Permanently delete member "${record.firstname} ${record.lastname}"? This action cannot be undone.`)) return
   try {
     const { error } = await supabase
-      .from('deworming_records')
-      .update({
-        is_archived: false,
-        archived_at: null
-      })
-      .eq('id', record.id)
-
+      .from('household_members')
+      .delete()
+      .eq('member_id', record.member_id)
     if (error) throw error
-
-    toast.success('Record restored successfully.')
-    await fetchDewormingRecords()
+    toast.success('Member deleted permanently.')
+    await fetchArchivedMembers()
   } catch (e) {
     console.error(e)
-    toast.error('Error restoring record.')
+    toast.error('Error deleting member.')
   }
 }
 </script>
@@ -123,9 +106,10 @@ const restoreRecord = async (record) => {
         <div class="hs-breadcrumb">
           <a href="#" @click.prevent="goBack">Records</a>
           <span class="separator">/</span>
-          <span class="current">Archived</span>
+          <span class="current">Archived Members</span>
         </div>
-        <h1>Deworming (10–19 yrs old) - Archived</h1>
+        <h1>Household Members - Archived</h1>
+        <p class="hs-module-desc">Manage archived household members. Restore or permanently delete records.</p>
       </div>
 
       <div class="hs-toolbar">
@@ -141,9 +125,9 @@ const restoreRecord = async (record) => {
         </div>
         <div class="hs-toolbar-right">
           <div class="hs-search-box">
-              <span class="mdi mdi-magnify"></span>
-              <input v-model="searchQuery" type="search" placeholder="Search..." />
-            </div>
+            <span class="mdi mdi-magnify"></span>
+            <input v-model="searchQuery" type="search" placeholder="Search..." />
+          </div>
         </div>
       </div>
 
@@ -154,34 +138,42 @@ const restoreRecord = async (record) => {
           <table class="hs-table">
             <thead>
               <tr>
+                <th>Head ID</th>
                 <th>Purok</th>
-                <th>Surname</th>
+                <th>Last Name</th>
                 <th>First Name</th>
                 <th>Middle Name</th>
-                <th>Name of Mother</th>
-                <th>Sex</th>
-                <th>Birthday</th>
+                <th>Suffix</th>
+                <th>Relationship</th>
+                <th>Birthdate</th>
                 <th>Age</th>
+                <th>Sex</th>
+                <th>Civil Status</th>
+                <th>Archived At</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="record in paginatedData" :key="record.id">
+              <tr v-for="record in paginatedData" :key="record.member_id">
+                <td>{{ record.head_id }}</td>
                 <td>{{ record.purok }}</td>
-                <td>{{ record.surname }}</td>
+                <td>{{ record.lastname }}</td>
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
-                <td>{{ record.mother_name }}</td>
+                <td>{{ record.suffix }}</td>
+                <td>{{ record.relationship || '-' }}</td>
+                <td>{{ record.birthdate || '-' }}</td>
+                <td>{{ record.age ?? '-' }}</td>
                 <td>{{ sexDisplay(record.sex) }}</td>
-                <td>{{ record.birthday }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.civil_status || '-' }}</td>
+                <td>{{ record.archived_at ? new Date(record.archived_at).toLocaleDateString() : '-' }}</td>
                 <td>
                   <button class="hs-btn hs-btn-primary" @click="restoreRecord(record)"><span class="mdi mdi-restore"></span> Restore</button>
                   <button class="hs-btn hs-btn-danger" @click="deleteRecord(record)"><span class="mdi mdi-delete"></span> Delete</button>
                 </td>
               </tr>
               <tr v-if="paginatedData.length === 0">
-                <td colspan="9" class="hs-table-empty">No archived records found.</td>
+                <td colspan="13" class="hs-table-empty">No archived members found.</td>
               </tr>
             </tbody>
           </table>

@@ -2,6 +2,8 @@
 import DashboardView from '@/components/DashboardView.vue'
 import Hhpsexport from '@/components/reports/Hhpsexport.vue'
 import html2canvas from 'html2canvas'
+
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import jsPDF from 'jspdf'
 import { ref, onMounted, computed, watch } from 'vue'
 import { usePagination } from '@/composables/usePagination'
@@ -462,7 +464,7 @@ const exportreportPdf = async () => {
                     <td>{{ m.relationship }}</td>
                     <td>{{ m.birthdate }}</td>
                     <td>{{ m.age }}</td>
-                    <td>{{ m.sex }}</td>
+                    <td>{{ sexDisplay(m.sex) }}</td>
                     <td>{{ m.civil_status }}</td>
                     <td>{{ m.education }}</td>
                     <td>{{ m.religion }}</td>

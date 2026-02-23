@@ -395,6 +395,18 @@ const monthNames = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ]
 
+// Today's date string for cell highlighting
+const todayDateStr = new Date().toISOString().split('T')[0]
+
+const onBeforeCellRender = (args) => {
+  const cellDate = args.cell.start.toString('yyyy-MM-dd')
+  if (cellDate === todayDateStr) {
+    args.cell.properties.backColor = '#edf7e4'
+    const dayNum = args.cell.start.getDayOfMonth ? args.cell.start.getDayOfMonth() : new Date(cellDate).getDate()
+    args.cell.properties.headerHtml = `<div class="cal-today-num">${dayNum}</div>`
+  }
+}
+
 onMounted(async () => {
   const now = new Date()
   currentMonth.value = now.getMonth() + 1
@@ -485,6 +497,7 @@ onMounted(async () => {
                 onTimeRangeSelected,
                 onEventClicked,
                 onBeforeEventRender,
+                onBeforeCellRender,
                 contextMenu
               }"
               ref="monthRef"
@@ -586,6 +599,21 @@ onMounted(async () => {
 .cal-stat-chip { display: flex; align-items: center; gap: 5px; padding: 5px 12px; background: var(--hs-white); border: 1px solid var(--hs-border); border-radius: 20px; font-size: var(--hs-font-size-xs); font-weight: 500; color: var(--chip-color, var(--hs-gray-700)); }
 .cal-stat-chip .mdi { font-size: 14px; }
 @media (max-width: 900px) { .calendar-layout { grid-template-columns: 1fr; } }
+
+/* Today cell highlight */
+:deep(.cal-today-num) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: #4a7a1a;
+  color: #fff;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+}
 .cal-stats-row { display: flex; gap: var(--hs-space-3); flex-wrap: wrap; margin-bottom: var(--hs-space-5); }
 .cal-panel { padding: var(--hs-space-4); }
 .cal-toolbar-group { display: flex; align-items: center; gap: var(--hs-space-2); }

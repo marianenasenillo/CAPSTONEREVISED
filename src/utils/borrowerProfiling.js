@@ -130,6 +130,19 @@ export async function createMedicineTransaction({
     throw new Error('Failed to reserve stock (concurrent update)')
   }
 
+  // Look up borrower profile to populate recipient fields
+  let recipientName = null
+  let recipientPurok = null
+  const { data: bp, error: bpErr } = await supabase
+    .from('borrower_profiles')
+    .select('firstname, lastname, purok')
+    .eq('borrower_id', borrower_id)
+    .maybeSingle()
+  if (!bpErr && bp) {
+    recipientName = [bp.firstname, bp.lastname].filter(Boolean).join(' ') || null
+    recipientPurok = bp.purok || null
+  }
+
   const { data: tx, error: txErr } = await supabase
     .from('medicine_transactions')
     .insert({
@@ -140,6 +153,8 @@ export async function createMedicineTransaction({
       purpose,
       prescribed_by,
       transaction_type: 'request',
+      recipient_name: recipientName,
+      recipient_purok: recipientPurok,
     })
     .select()
     .single()
@@ -211,6 +226,19 @@ export async function createToolBorrowTransaction({
     throw new Error('Failed to reserve stock (concurrent update)')
   }
 
+  // Look up borrower profile to populate recipient fields
+  let recipientName = null
+  let recipientPurok = null
+  const { data: bp2, error: bp2Err } = await supabase
+    .from('borrower_profiles')
+    .select('firstname, lastname, purok')
+    .eq('borrower_id', borrower_id)
+    .maybeSingle()
+  if (!bp2Err && bp2) {
+    recipientName = [bp2.firstname, bp2.lastname].filter(Boolean).join(' ') || null
+    recipientPurok = bp2.purok || null
+  }
+
   const { data: tx, error: txErr } = await supabase
     .from('tool_transactions')
     .insert({
@@ -222,6 +250,8 @@ export async function createToolBorrowTransaction({
       expected_return_date,
       status: 'borrowed',
       transaction_type: 'borrow',
+      recipient_name: recipientName,
+      recipient_purok: recipientPurok,
     })
     .select()
     .single()

@@ -97,16 +97,37 @@ const saveNotes = async () => {
   if (!editingLog.value) return
   try {
     const txId = editingLog.value.transaction_id
-    if (editingLog.value._table === 'medicine_transactions') {
+    const table = editingLog.value._table
+    if (!txId || !table) {
+      toast.error('Cannot identify transaction to update.')
+      return
+    }
+    if (table === 'medicine_transactions') {
       await medicineApi.updateMedicineTransaction(txId, { notes: editNotesValue.value })
     } else {
       await toolsApi.updateToolTransaction(txId, { notes: editNotesValue.value })
     }
     editingLog.value.notes = editNotesValue.value
+    // Refresh local transaction data to keep in sync
+    try {
+      medTransactions.value = await medicineApi.listAvailedMedicine()
+      toolTransactions.value = await toolsApi.listAvailedTools()
+    } catch { /* non-critical refresh */ }
     showNotesModal.value = false
     toast.success('Notes updated successfully.')
   } catch (err) {
     console.error('Failed to update notes:', err)
+    // Fallback: try direct supabase update
+    try {
+      const table = editingLog.value._table
+      const txId = editingLog.value.transaction_id
+      const { error: fbErr } = await supabase.from(table).update({ notes: editNotesValue.value }).eq('transaction_id', txId)
+      if (fbErr) throw fbErr
+      editingLog.value.notes = editNotesValue.value
+      showNotesModal.value = false
+      toast.success('Notes updated successfully.')
+      return
+    } catch { /* fallback also failed */ }
     toast.error('Failed to update notes: ' + (err.message || err))
   }
 }
@@ -127,6 +148,20 @@ const addMedicineForm = ref({ name: '', quantity: 1, expiration: '' })
 const openAddMedicineModal = () => { addMedicineForm.value = { name: '', quantity: 1, expiration: '' }; showAddMedicineModal.value = true }
 const confirmAddMedicine = async () => {
   if (!addMedicineForm.value.name || !(addMedicineForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
+
+  // Duplicate check: same name + same expiration date
+  const normName = addMedicineForm.value.name.trim().toLowerCase()
+  const formExp = addMedicineForm.value.expiration || null
+  const duplicate = medicine.value.find(m => {
+    const sameName = m.name.trim().toLowerCase() === normName
+    const existingExp = m.expiration ? m.expiration.split('T')[0] : null
+    return sameName && existingExp === formExp
+  })
+  if (duplicate) {
+    toast.warning(`"${duplicate.name}" with the same expiration date already exists. Use Stock In to add more quantity.`)
+    return
+  }
+
   try {
     await medicineApi.createMedicine({
       name: addMedicineForm.value.name, quantity: addMedicineForm.value.quantity,
@@ -143,6 +178,15 @@ const addToolForm = ref({ name: '', quantity: 1 })
 const openAddToolModal = () => { addToolForm.value = { name: '', quantity: 1 }; showAddToolModal.value = true }
 const confirmAddTool = async () => {
   if (!addToolForm.value.name || !(addToolForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
+
+  // Duplicate check: same name (tools don't have expiration)
+  const normName = addToolForm.value.name.trim().toLowerCase()
+  const duplicate = tools.value.find(t => t.name.trim().toLowerCase() === normName)
+  if (duplicate) {
+    toast.warning(`"${duplicate.name}" already exists. Use Stock In to add more quantity.`)
+    return
+  }
+
   try {
     await toolsApi.createTool({ name: addToolForm.value.name, quantity: addToolForm.value.quantity })
     tools.value = await toolsApi.listTools()
@@ -172,10 +216,11 @@ const confirmEditMedicine = async () => {
   } catch (err) { console.error('Failed to update medicine', err); toast.error('Failed to update medicine: ' + (err.message || err)) }
 }
 const confirmDeleteMedicine = async (med) => {
-  if (!confirm(`Delete "${med.name}"? This action cannot be undone.`)) return
+  if (!confirm(`Delete "${med.name}"? This will also remove all related transaction records. This action cannot be undone.`)) return
   try {
     await medicineApi.deleteMedicine(med.medicine_id)
     medicine.value = await medicineApi.listMedicine()
+    medTransactions.value = await medicineApi.listAvailedMedicine()
     showDetailModal.value = false
     toast.success('Medicine deleted successfully.')
   } catch (err) { console.error('Failed to delete medicine', err); toast.error('Failed to delete medicine: ' + (err.message || err)) }
@@ -197,10 +242,13 @@ const confirmEditTool = async () => {
   } catch (err) { console.error('Failed to update tool', err); toast.error('Failed to update tool: ' + (err.message || err)) }
 }
 const confirmDeleteTool = async (tool) => {
-  if (!confirm(`Delete "${tool.name}"? This action cannot be undone.`)) return
+  if (!confirm(`Delete "${tool.name}"? This will also remove all related transaction records. This action cannot be undone.`)) return
   try {
-    await toolsApi.deleteTool(tool.tool_id); tools.value = await toolsApi.listTools()
-    showDetailModal.value = false; toast.success('Tool deleted successfully.')
+    await toolsApi.deleteTool(tool.tool_id)
+    tools.value = await toolsApi.listTools()
+    toolTransactions.value = await toolsApi.listAvailedTools()
+    showDetailModal.value = false
+    toast.success('Tool deleted successfully.')
   } catch (err) { console.error('Failed to delete tool', err); toast.error('Failed to delete tool: ' + (err.message || err)) }
 }
 

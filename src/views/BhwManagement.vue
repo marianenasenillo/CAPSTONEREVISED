@@ -103,6 +103,22 @@ async function handleRegister() {
     })
     if (error) throw error
     toast.success('Account registered! A confirmation email has been sent.')
+
+    // Notify all BHWs about new team member
+    try {
+      const adminName = currentUser.value?.user_metadata?.full_name || 'Admin'
+      const newName = `${regForm.value.firstName} ${regForm.value.lastName}`
+      await supabase.from('notifications').insert([{
+        target_role: 'BHW',
+        type: 'account_created',
+        title: `Welcome new BHW: ${newName}`,
+        message: `${adminName} registered a new ${regForm.value.role} account for ${newName}`,
+        icon: 'mdi-account-check',
+        color: 'var(--hs-success)',
+        link: '/bhw-management',
+      }])
+    } catch { /* non-critical */ }
+
     showRegisterModal.value = false
     await fetchUsers()
   } catch (err) {
@@ -300,7 +316,7 @@ function selectBhw(bhw) {
                 @click="selectBhw(bhw)"
               >
                 <div class="bhw-list-avatar">
-                  <img v-if="bhw.avatar_url" :src="bhw.avatar_url" alt="" />
+                  <img v-if="bhw.avatar_url" :src="bhw.avatar_url" alt="" @error="bhw.avatar_url = ''" />
                   <span v-else class="mdi mdi-account"></span>
                 </div>
                 <div class="bhw-list-info">
@@ -318,7 +334,7 @@ function selectBhw(bhw) {
           <div class="hs-card-body" v-if="selectedBhw">
             <template v-if="!isEditing">
               <div class="bhw-profile-avatar">
-                <img v-if="selectedBhw.avatar_url" :src="selectedBhw.avatar_url" class="bhw-avatar-img" />
+                <img v-if="selectedBhw.avatar_url" :src="selectedBhw.avatar_url" class="bhw-avatar-img" @error="selectedBhw.avatar_url = ''" />
                 <div v-else class="bhw-avatar-placeholder"><span class="mdi mdi-account"></span></div>
                 <h3 class="bhw-profile-name">{{ selectedBhw.name }}</h3>
                 <span class="hs-badge hs-badge-primary">{{ selectedBhw.role }}</span>

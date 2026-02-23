@@ -143,12 +143,13 @@ export function getEligibleServices(member, rules = SERVICE_ELIGIBILITY_RULES) {
   const age = calculateAge(member.birthdate)
   if (age === null) return []
 
-  const sex = (member.sex || '').trim()
+  const rawSex = (member.sex || '').trim().toLowerCase()
+  const sex = (rawSex === 'm' || rawSex === 'male') ? 'male' : (rawSex === 'f' || rawSex === 'female') ? 'female' : rawSex
   const civilStatus = (member.civil_status || '').trim()
 
   return rules.filter(rule => {
     if (age < rule.ageMin || age > rule.ageMax) return false
-    if (rule.sex && rule.sex.toLowerCase() !== sex.toLowerCase()) return false
+    if (rule.sex && rule.sex.toLowerCase() !== sex) return false
     if (rule.civilStatus && rule.civilStatus.length > 0) {
       const matched = rule.civilStatus.some(
         s => s.toLowerCase() === civilStatus.toLowerCase()

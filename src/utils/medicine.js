@@ -81,8 +81,29 @@ export async function updateMedicine(medicine_id, updates) {
 
 export async function deleteMedicine(medicine_id) {
   if (!medicine_id) throw new Error('medicine_id required')
-  const { error } = await supabase.from('medicine').delete().eq('medicine_id', medicine_id)
+
+  // Delete related transactions first to avoid FK constraint
+  const { error: txError } = await supabase
+    .from('medicine_transactions')
+    .delete()
+    .eq('medicine_id', medicine_id)
+  if (txError) throw txError
+
+  const { error } = await supabase
+    .from('medicine')
+    .delete()
+    .eq('medicine_id', medicine_id)
   if (error) throw error
+
+  // Verify the record was actually deleted (RLS may silently block)
+  const { data: check } = await supabase
+    .from('medicine')
+    .select('medicine_id')
+    .eq('medicine_id', medicine_id)
+    .maybeSingle()
+  if (check) throw new Error('Delete was blocked by a database policy. Please contact your administrator.')
+
+  return true
 }
 
 export async function getLowStockMedicine(threshold = 5) {
@@ -169,9 +190,9 @@ export async function updateMedicineTransaction(transaction_id, updates) {
     .update(updates)
     .eq('transaction_id', transaction_id)
     .select()
-    .single()
   if (error) throw error
-  return data
+  if (!data || data.length === 0) throw new Error('No transaction found or update not permitted')
+  return data[0]
 }
 
 export default {

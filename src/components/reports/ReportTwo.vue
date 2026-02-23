@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { supabase } from '@/utils/supabase'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PieController, BarController } from 'chart.js'
 
@@ -18,6 +18,11 @@ const purokChartData = ref({})
 const purokPieChartData = ref({})
 
 const discussionText = ref('')
+
+const reportingPeriod = computed(() => {
+  const now = new Date()
+  return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+})
 
 onMounted(async () => {
   const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -93,6 +98,7 @@ const fetchGenderDistribution = async () => {
       .from('household_heads')
       .select('male_count, female_count')
       .eq('barangay', selectedBarangay.value)
+      .eq('is_archived', false)
       .not('male_count', 'is', null)
       .not('female_count', 'is', null)
 
@@ -214,8 +220,10 @@ const generateDiscussion = () => {
     text += `the gender distribution shows ${genderData[0] || 0} males and ${genderData[1] || 0} females. `
   }
 
-  if (purokLabels.length > 0) {
-    text += `Population per purok varies, with the highest in ${purokLabels[purokData.indexOf(Math.max(...purokData))] || 'unknown'} (${Math.max(...purokData) || 0} residents). `
+  if (purokLabels.length > 0 && purokData.length > 0) {
+    const maxIdx = purokData.indexOf(Math.max(...purokData))
+    const topPurok = maxIdx >= 0 ? (purokLabels[maxIdx] || 'N/A') : 'N/A'
+    text += `Population per purok varies, with the highest in ${topPurok} (${Math.max(...purokData) || 0} residents). `
   }
 
   text += `This data supports planning for equitable resource allocation within the barangay.</p>`
@@ -250,7 +258,7 @@ const generateDiscussion = () => {
                 <h4 class="fw-bold">Comparative Report</h4>
                 <p>
                   {{ selectedBarangay }} – Municipality of Buenavista, Agusan del Norte <br />
-                  Reporting Period: September 2025
+                  Reporting Period: {{ reportingPeriod }}
                 </p>
               </div>
               <div class="container py-4">

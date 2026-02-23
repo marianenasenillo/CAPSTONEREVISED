@@ -1,7 +1,6 @@
 <script setup>
 // ServiceEligibility — auto-detects eligible health services per household member
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import { useToast } from '@/composables/useToast'
 import { usePagination } from '@/composables/usePagination'
@@ -12,7 +11,6 @@ import {
   getServiceSummary,
 } from '@/utils/serviceEligibility'
 
-const router = useRouter()
 const toast = useToast()
 
 const loading = ref(true)
@@ -21,6 +19,19 @@ const userBarangay = ref('')
 const selectedService = ref('')
 const searchQuery = ref('')
 const purokFilter = ref('')
+
+// Tracks which name+table combos already have records (to prevent double-entry)
+// Key format: "firstname|lastname|table" (all lowercased/trimmed)
+const enrolledLookup = ref(new Set())
+
+function makeEnrolledKey(firstname, lastname, table) {
+  return `${(firstname || '').trim().toLowerCase()}|${(lastname || '').trim().toLowerCase()}|${table}`
+}
+
+function isAlreadyEnrolled(member, serviceRule) {
+  const key = makeEnrolledKey(member.firstname, member.lastname, serviceRule.table)
+  return enrolledLookup.value.has(key)
+}
 
 const enrichedMembers = computed(() => {
   return members.value.map(m => ({
@@ -81,7 +92,7 @@ async function loadMembers() {
 
     const { data: headData, error: headErr } = await supabase
       .from('household_heads')
-      .select('head_id, firstname, lastname, middlename, suffix, purok, barangay, civil_status')
+      .select('head_id, firstname, lastname, middlename, suffix, purok, barangay, civil_status, birthdate, age, sex')
       .eq('barangay', userBarangay.value)
       .eq('is_archived', false)
       .order('lastname', { ascending: true })
@@ -103,9 +114,9 @@ async function loadMembers() {
       lastname: h.lastname,
       middlename: h.middlename || '',
       suffix: h.suffix || '',
-      birthdate: null,
-      age: null,
-      sex: null,
+      birthdate: h.birthdate || null,
+      age: h.age || null,
+      sex: h.sex || null,
       civil_status: h.civil_status,
       barangay: h.barangay,
       purok: h.purok || '',
@@ -116,6 +127,9 @@ async function loadMembers() {
     }))
 
     members.value = [...flatMembers, ...headAsMembers]
+
+    // Load existing records from all service tables to detect already-enrolled members
+    await loadEnrolledRecords()
   } catch (err) {
     console.error('Failed to load members:', err)
     toast.error('Failed to load member data')
@@ -124,48 +138,203 @@ async function loadMembers() {
   }
 }
 
+async function loadEnrolledRecords() {
+  const lookup = new Set()
+  // Each unique table from SERVICE_ELIGIBILITY_RULES
+  const tableConfigs = [
+    { table: 'childcare_vitamina_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'deworming_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'wra_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'cervical_screening_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'family_planning_records', fnCol: 'firstname', lnCol: 'surname' },
+  ]
+
+  const queries = tableConfigs.map(async ({ table, fnCol, lnCol }) => {
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select(`${fnCol}, ${lnCol}`)
+      if (error) {
+        console.warn(`[enrollment check] Failed to query ${table}:`, error.message)
+        return
+      }
+      for (const row of data || []) {
+        const key = makeEnrolledKey(row[fnCol], row[lnCol], table)
+        lookup.add(key)
+      }
+    } catch (err) {
+      console.warn(`[enrollment check] Error querying ${table}:`, err)
+    }
+  })
+
+  await Promise.all(queries)
+  enrolledLookup.value = lookup
+}
+
 function selectService(serviceKey) {
   selectedService.value = selectedService.value === serviceKey ? '' : serviceKey
 }
 
-async function navigateToService(route, member) {
-  const rule = SERVICE_ELIGIBILITY_RULES.find(r => r.route === route)
-  const table = rule?.table
+// Enrollment modal state
+const enrollModal = ref({
+  show: false,
+  rule: null,
+  member: null,
+  saving: false,
+  form: {},
+})
 
-  if (table) {
-    try {
-      const lastNameCol = table === 'family_planning_records' ? 'surname' : 'lastname'
-      const firstName = (member.firstname || '').trim()
-      const lastName = (member.lastname || '').trim()
-
-      if (firstName && lastName) {
-        const { count, error: checkErr } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true })
-          .ilike(lastNameCol, lastName)
-          .ilike('firstname', firstName)
-
-        if (!checkErr && count > 0) {
-          toast.error(`${member.firstname} ${member.lastname} already exists in ${rule.label} records.`)
-          return
-        }
-      }
-    } catch (err) {
-      console.warn('Duplicate check failed, proceeding with navigation:', err)
-    }
+function openEnrollModal(rule, member) {
+  // Prevent double-entry: check if already enrolled
+  if (isAlreadyEnrolled(member, rule)) {
+    toast.warning(`${member.firstname} ${member.lastname} is already enrolled in ${rule.label}. Duplicate entry not allowed.`)
+    return
   }
 
-  sessionStorage.setItem('hs_eligible_member', JSON.stringify({
+  const form = {
     firstname: member.firstname || '',
     lastname: member.lastname || '',
     middlename: member.middlename || '',
     suffix: member.suffix || '',
     purok: member.purok || '',
-    age: member._age,
+    age: member._age != null ? member._age : (member.age || ''),
     sex: member.sex || '',
     birthdate: member.birthdate || '',
-  }))
-  router.push({ path: route, query: { autoOpen: '1' } })
+    civil_status: member.civil_status || '',
+    // Service-specific fields
+    mother_name: '',
+    screened: false,
+    se_status: '',
+    plano_manganak: '',
+    karun: false,
+    spacing: false,
+    limiting: false,
+    fecund: false,
+    infecund: false,
+    fb_method: '',
+    fb_type: '',
+    fb_date: null,
+    change_method: '',
+  }
+  enrollModal.value = { show: true, rule, member, saving: false, form }
+}
+
+async function saveEnrollment() {
+  const { rule, form } = enrollModal.value
+  if (!rule || !form.firstname || !form.lastname) {
+    toast.warning('Name is required.')
+    return
+  }
+
+  enrollModal.value.saving = true
+  try {
+    const table = rule.table
+    const lastNameCol = table === 'family_planning_records' ? 'surname' : 'lastname'
+    const firstName = form.firstname.trim()
+    const lastName = form.lastname.trim()
+
+    // Duplicate check
+    if (firstName && lastName) {
+      const { count, error: checkErr } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .ilike(lastNameCol, lastName)
+        .ilike('firstname', firstName)
+
+      if (!checkErr && count > 0) {
+        toast.error(`${firstName} ${lastName} already exists in ${rule.label} records.`)
+        enrollModal.value.saving = false
+        return
+      }
+    }
+
+    const ageInt = form.age !== '' && form.age != null ? parseInt(form.age) : null
+    let payload = {}
+
+    if (table === 'childcare_vitamina_records') {
+      payload = {
+        purok: form.purok,
+        lastname: form.lastname,
+        firstname: form.firstname,
+        middlename: form.middlename,
+        suffix: form.suffix,
+        age: ageInt,
+        birthdate: form.birthdate || null,
+        gender: form.sex || '',
+        mother_name: form.mother_name,
+      }
+    } else if (table === 'deworming_records') {
+      payload = {
+        purok: form.purok,
+        lastname: form.lastname,
+        firstname: form.firstname,
+        middlename: form.middlename,
+        sex: form.sex || '',
+        birthday: form.birthdate || null,
+        age: ageInt,
+        mother_name: form.mother_name,
+      }
+    } else if (table === 'wra_records') {
+      payload = {
+        purok: form.purok,
+        lastname: form.lastname,
+        firstname: form.firstname,
+        middlename: form.middlename,
+        suffix: form.suffix,
+        age: ageInt,
+        birthdate: form.birthdate || null,
+        civil_status: form.civil_status,
+        se_status: form.se_status,
+        plano_manganak: form.plano_manganak,
+        karun: form.karun,
+        spacing: form.spacing,
+        limiting: form.limiting,
+        fecund: form.fecund,
+        infecund: form.infecund,
+        fb_method: form.fb_method,
+        fb_type: form.fb_type,
+        fb_date: form.fb_date || null,
+        change_method: form.change_method,
+      }
+    } else if (table === 'cervical_screening_records') {
+      payload = {
+        purok: form.purok,
+        lastname: form.lastname,
+        firstname: form.firstname,
+        middlename: form.middlename,
+        suffix: form.suffix,
+        age: ageInt,
+        birthdate: form.birthdate || null,
+        screened: form.screened,
+      }
+    } else if (table === 'family_planning_records') {
+      payload = {
+        purok: form.purok,
+        surname: form.lastname,
+        firstname: form.firstname,
+        sex: form.sex || '',
+        birthday: form.birthdate || null,
+        age: ageInt,
+        mother_name: form.mother_name,
+      }
+    }
+
+    const { error } = await supabase.from(table).insert(payload)
+    if (error) {
+      console.error(`[enrollment] Supabase error for ${table}:`, error.code, error.message, '\nPayload:', JSON.stringify(payload, null, 2))
+      throw error
+    }
+
+    toast.success(`${form.firstname} ${form.lastname} enrolled in ${rule.label} successfully.`)
+    enrollModal.value.show = false
+    // Update enrolled lookup so the tag turns gray immediately
+    enrolledLookup.value.add(makeEnrolledKey(form.firstname, form.lastname, table))
+  } catch (err) {
+    console.error('[enrollment] Error:', err?.code, err?.message, err)
+    toast.error(`Failed to enroll: ${err?.message || err}`)
+  } finally {
+    enrollModal.value.saving = false
+  }
 }
 
 function clearFilters() {
@@ -306,7 +475,7 @@ onMounted(loadMembers)
                 <span v-if="m._isHead" class="hs-badge hs-badge-info" style="margin-left:4px;font-size:10px;">Head</span>
               </td>
               <td>{{ m._age !== null ? m._age : '—' }}</td>
-              <td>{{ m.sex || '—' }}</td>
+              <td>{{ m.sex === 'M' ? 'Male' : m.sex === 'F' ? 'Female' : (m.sex || '—') }}</td>
               <td>
                 <span class="se-age-badge">{{ m._ageGroup }}</span>
               </td>
@@ -317,11 +486,15 @@ onMounted(loadMembers)
                     v-for="svc in m._eligibleServices"
                     :key="svc.key"
                     class="se-service-tag"
-                    :title="svc.description"
+                    :class="{ 'se-service-tag--enrolled': isAlreadyEnrolled(m, svc) }"
+                    :title="isAlreadyEnrolled(m, svc) ? 'Already enrolled' : svc.description"
                   >
-                    <span :class="'mdi ' + svc.icon" @click="navigateToService(svc.route, m)"></span>
-                    <span class="se-tag-label" @click="navigateToService(svc.route, m)">{{ svc.label }}</span>
-                    <span class="se-tag-info" :title="'Why eligible?'" @click.stop="showServiceInfo($event, svc, m)">
+                    <span :class="'mdi ' + svc.icon" @click="openEnrollModal(svc, m)"></span>
+                    <span class="se-tag-label" @click="openEnrollModal(svc, m)">{{ svc.label }}</span>
+                    <span v-if="isAlreadyEnrolled(m, svc)" class="se-tag-check">
+                      <span class="mdi mdi-check-circle"></span>
+                    </span>
+                    <span v-else class="se-tag-info" :title="'Why eligible?'" @click.stop="showServiceInfo($event, svc, m)">
                       <span class="mdi mdi-information-outline"></span>
                     </span>
                   </span>
@@ -399,9 +572,191 @@ onMounted(loadMembers)
           <button class="hs-btn hs-btn-secondary hs-btn-sm" @click="closeInfoPopup">
             <span class="mdi mdi-close"></span> Close
           </button>
-          <button class="hs-btn hs-btn-primary hs-btn-sm" @click="closeInfoPopup(); navigateToService(infoPopup.rule?.route, infoPopup.member)">
+          <button class="hs-btn hs-btn-primary hs-btn-sm" @click="closeInfoPopup(); openEnrollModal(infoPopup.rule, infoPopup.member)">
             <span class="mdi mdi-arrow-right"></span> Enroll in Service
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Enrollment Modal -->
+    <div v-if="enrollModal.show" class="hs-modal-overlay" @click.self="enrollModal.show = false">
+      <div class="hs-modal hs-modal-lg">
+        <div class="hs-modal-header">
+          <span :class="'mdi ' + (enrollModal.rule?.icon || 'mdi-clipboard-plus') + ' se-enroll-icon'"></span>
+          <h3>Enroll in {{ enrollModal.rule?.label }}</h3>
+          <button class="hs-modal-close" @click="enrollModal.show = false">&times;</button>
+        </div>
+        <div class="hs-modal-body">
+          <form @submit.prevent="saveEnrollment">
+            <!-- Member Info Banner -->
+            <div class="se-enroll-banner">
+              <span class="mdi mdi-account-circle"></span>
+              <div>
+                <strong>{{ enrollModal.form.firstname }} {{ enrollModal.form.lastname }}</strong>
+                <span v-if="enrollModal.member?._isHead" class="hs-badge hs-badge-info" style="font-size:10px;margin-left:4px;">Head</span>
+                <div class="se-enroll-banner-sub">
+                  {{ (enrollModal.form.sex === 'M' ? 'Male' : enrollModal.form.sex === 'F' ? 'Female' : enrollModal.form.sex) || '—' }} · {{ enrollModal.form.age != null && enrollModal.form.age !== '' ? enrollModal.form.age + ' yrs' : '—' }} · {{ enrollModal.form.purok || '—' }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Basic Info (autofilled, editable) -->
+            <div class="se-enroll-section-label">Personal Information</div>
+            <div class="hs-form-row">
+              <div class="hs-form-group">
+                <label class="hs-label">Last Name <span class="hs-text-danger">*</span></label>
+                <input v-model="enrollModal.form.lastname" type="text" class="hs-input" required>
+              </div>
+              <div class="hs-form-group">
+                <label class="hs-label">First Name <span class="hs-text-danger">*</span></label>
+                <input v-model="enrollModal.form.firstname" type="text" class="hs-input" required>
+              </div>
+            </div>
+            <div class="hs-form-row">
+              <div class="hs-form-group">
+                <label class="hs-label">Middle Name</label>
+                <input v-model="enrollModal.form.middlename" type="text" class="hs-input">
+              </div>
+              <div class="hs-form-group" v-if="enrollModal.rule?.table !== 'deworming_records' && enrollModal.rule?.table !== 'family_planning_records'">
+                <label class="hs-label">Suffix</label>
+                <input v-model="enrollModal.form.suffix" type="text" class="hs-input">
+              </div>
+              <div class="hs-form-group" v-else>
+                <label class="hs-label">Sex</label>
+                <select v-model="enrollModal.form.sex" class="hs-select">
+                  <option value="">Select</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+            </div>
+            <div class="hs-form-row">
+              <div class="hs-form-group">
+                <label class="hs-label">Birthdate</label>
+                <input v-model="enrollModal.form.birthdate" type="date" class="hs-input">
+              </div>
+              <div class="hs-form-group">
+                <label class="hs-label">Age</label>
+                <input v-model.number="enrollModal.form.age" type="number" class="hs-input" min="0">
+              </div>
+            </div>
+            <div class="hs-form-row">
+              <div class="hs-form-group">
+                <label class="hs-label">Purok</label>
+                <input v-model="enrollModal.form.purok" type="text" class="hs-input">
+              </div>
+              <div class="hs-form-group" v-if="enrollModal.rule?.table === 'childcare_vitamina_records' || enrollModal.rule?.table === 'deworming_records' || enrollModal.rule?.table === 'family_planning_records'">
+                <label class="hs-label">Mother's Name</label>
+                <input v-model="enrollModal.form.mother_name" type="text" class="hs-input">
+              </div>
+              <div class="hs-form-group" v-else-if="enrollModal.rule?.table === 'wra_records'">
+                <label class="hs-label">Civil Status</label>
+                <select v-model="enrollModal.form.civil_status" class="hs-select">
+                  <option value="">Select</option>
+                  <option value="Single">Single</option>
+                  <option value="Married">Married</option>
+                  <option value="Widowed">Widowed</option>
+                  <option value="Separated">Separated</option>
+                  <option value="Live-in">Live-in</option>
+                </select>
+              </div>
+              <div class="hs-form-group" v-else>
+                <label class="hs-label">Sex</label>
+                <select v-model="enrollModal.form.sex" class="hs-select">
+                  <option value="">Select</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- WRA-specific fields -->
+            <template v-if="enrollModal.rule?.table === 'wra_records'">
+              <div class="se-enroll-section-label">WRA Information</div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">SE Status</label>
+                  <input v-model="enrollModal.form.se_status" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Plano Manganak</label>
+                  <input v-model="enrollModal.form.plano_manganak" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">FB Method</label>
+                  <input v-model="enrollModal.form.fb_method" type="text" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">FB Type</label>
+                  <input v-model="enrollModal.form.fb_type" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">FB Date</label>
+                  <input v-model="enrollModal.form.fb_date" type="date" class="hs-input">
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Change Method</label>
+                  <input v-model="enrollModal.form.change_method" type="text" class="hs-input">
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">
+                    <input type="checkbox" v-model="enrollModal.form.karun" style="margin-right:4px;"> Karun
+                  </label>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">
+                    <input type="checkbox" v-model="enrollModal.form.spacing" style="margin-right:4px;"> Spacing
+                  </label>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">
+                    <input type="checkbox" v-model="enrollModal.form.limiting" style="margin-right:4px;"> Limiting
+                  </label>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">
+                    <input type="checkbox" v-model="enrollModal.form.fecund" style="margin-right:4px;"> Fecund
+                  </label>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">
+                    <input type="checkbox" v-model="enrollModal.form.infecund" style="margin-right:4px;"> Infecund
+                  </label>
+                </div>
+              </div>
+            </template>
+
+            <!-- Cervical Screening specific -->
+            <template v-if="enrollModal.rule?.table === 'cervical_screening_records'">
+              <div class="se-enroll-section-label">Screening Information</div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Screened</label>
+                  <select v-model="enrollModal.form.screened" class="hs-select">
+                    <option :value="false">No</option>
+                    <option :value="true">Yes</option>
+                  </select>
+                </div>
+              </div>
+            </template>
+
+            <div class="hs-modal-footer hs-modal-footer--flat">
+              <button type="button" class="hs-btn hs-btn-secondary" @click="enrollModal.show = false">Cancel</button>
+              <button type="submit" class="hs-btn hs-btn-primary" :disabled="enrollModal.saving">
+                <span class="mdi" :class="enrollModal.saving ? 'mdi-loading mdi-spin' : 'mdi-check'"></span>
+                {{ enrollModal.saving ? 'Enrolling...' : 'Enroll' }}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -512,6 +867,25 @@ onMounted(loadMembers)
 .se-service-tag:hover {
   background: var(--hs-primary);
   color: white;
+}
+/* Already-enrolled service tag: gray instead of green */
+.se-service-tag--enrolled {
+  background: var(--hs-gray-100);
+  color: var(--hs-gray-400);
+  cursor: default;
+}
+.se-service-tag--enrolled:hover {
+  background: var(--hs-gray-200);
+  color: var(--hs-gray-500);
+}
+.se-tag-check {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+.se-tag-check .mdi {
+  font-size: 12px;
 }
 .se-service-tag .mdi {
   font-size: 13px;
@@ -696,5 +1070,45 @@ onMounted(loadMembers)
   gap: 8px;
   padding: 12px 20px;
   border-top: 1px solid var(--hs-border);
+}
+
+/* Enrollment Modal Styles */
+.se-enroll-icon {
+  font-size: 20px;
+  color: var(--hs-primary);
+  margin-right: 4px;
+}
+.se-enroll-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--hs-primary-bg, #e8f5e9);
+  border-radius: var(--hs-radius);
+  margin-bottom: 16px;
+  border: 1px solid var(--hs-primary-lighter, #c8e6c9);
+}
+.se-enroll-banner .mdi {
+  font-size: 28px;
+  color: var(--hs-primary);
+}
+.se-enroll-banner strong {
+  font-size: 14px;
+  color: var(--hs-gray-900);
+}
+.se-enroll-banner-sub {
+  font-size: 12px;
+  color: var(--hs-gray-500);
+  margin-top: 2px;
+}
+.se-enroll-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hs-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 16px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hs-gray-100);
 }
 </style>

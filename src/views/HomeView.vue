@@ -53,15 +53,6 @@ const genderChartData = computed(() => ({
   }]
 }))
 
-const quickActions = [
-  { label: 'Household Profiling', icon: 'mdi-home-group', path: '/householdprofile', desc: 'Add new households' },
-  { label: 'Maternal Services', icon: 'mdi-mother-nurse', path: '/maternalservices', desc: 'WRA & Cervical screening' },
-  { label: 'Child Care', icon: 'mdi-baby-face-outline', path: '/childcare', desc: 'Vitamin A supplementation' },
-  { label: 'Family Planning', icon: 'mdi-account-heart', path: '/familyplanning', desc: 'Responsible parenthood' },
-  { label: 'Preventive Health', icon: 'mdi-shield-plus', path: '/preventivehealthservices', desc: 'Deworming program' },
-  { label: 'Calendar', icon: 'mdi-calendar-month-outline', path: '/calendar', desc: 'Events & schedules' },
-]
-
 onMounted(async () => {
   const { data: { user } } = await supabase.auth.getUser()
   userRole.value = user?.user_metadata?.role || null
@@ -289,41 +280,25 @@ const showAbout = ref(false)
           </div>
         </div>
 
-        <!-- Bottom Section: Quick Actions + Events + Low Stock -->
-        <div class="home-bottom-grid">
-          <!-- Quick Actions -->
-          <div class="hs-card">
-            <div class="hs-card-header"><span><span class="mdi mdi-lightning-bolt hs-text-primary"></span> Quick Actions</span></div>
-            <div class="hs-card-body">
-              <div class="hs-quick-actions">
-                <div v-for="action in quickActions" :key="action.path" class="hs-quick-action hs-tooltip" :data-tooltip="action.desc" @click="router.push(action.path)">
-                  <span :class="'mdi ' + action.icon"></span>
-                  <span>{{ action.label }}</span>
-                </div>
-              </div>
-            </div>
+        <!-- Bottom Section: Upcoming Events -->
+        <div class="hs-card hs-mt-6">
+          <div class="hs-card-header">
+            <span><span class="mdi mdi-calendar-star hs-text-primary"></span> Upcoming Events</span>
+            <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="router.push('/calendar')">View All</button>
           </div>
-
-          <!-- Upcoming Events -->
-          <div class="hs-card">
-            <div class="hs-card-header">
-              <span><span class="mdi mdi-calendar-star hs-text-primary"></span> Upcoming Events</span>
-              <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="router.push('/calendar')">View All</button>
+          <div class="hs-card-body hs-p-0">
+            <div v-if="upcomingEventsList.length === 0" class="hs-empty-state">
+              <span class="mdi mdi-calendar-blank-outline"></span>
+              <p>No upcoming events</p>
             </div>
-            <div class="hs-card-body hs-p-0">
-              <div v-if="upcomingEventsList.length === 0" class="hs-empty-state">
-                <span class="mdi mdi-calendar-blank-outline"></span>
-                <p>No upcoming events</p>
+            <div v-for="ev in upcomingEventsList" :key="ev.id" class="upcoming-event-row">
+              <div class="event-date-badge">
+                <span class="month">{{ new Date(ev.start).toLocaleDateString('en', { month: 'short' }) }}</span>
+                <span class="day">{{ new Date(ev.start).getDate() }}</span>
               </div>
-              <div v-for="ev in upcomingEventsList" :key="ev.id" class="upcoming-event-row">
-                <div class="event-date-badge">
-                  <span class="month">{{ new Date(ev.start).toLocaleDateString('en', { month: 'short' }) }}</span>
-                  <span class="day">{{ new Date(ev.start).getDate() }}</span>
-                </div>
-                <div>
-                  <div class="event-text">{{ ev.text }}</div>
-                  <span class="hs-badge" :style="{ background: ev.type === 'holiday' ? 'var(--hs-danger-bg)' : ev.type === 'task' ? 'var(--hs-info-bg)' : 'var(--hs-success-bg)', color: ev.type === 'holiday' ? 'var(--hs-danger)' : ev.type === 'task' ? 'var(--hs-info)' : 'var(--hs-success)', fontSize: 'var(--hs-font-size-xs)' }">{{ ev.type }}</span>
-                </div>
+              <div>
+                <div class="event-text">{{ ev.text }}</div>
+                <span class="hs-badge" :style="{ background: ev.type === 'holiday' ? 'var(--hs-danger-bg)' : ev.type === 'task' ? 'var(--hs-info-bg)' : 'var(--hs-success-bg)', color: ev.type === 'holiday' ? 'var(--hs-danger)' : ev.type === 'task' ? 'var(--hs-info)' : 'var(--hs-success)', fontSize: 'var(--hs-font-size-xs)' }">{{ ev.type }}</span>
               </div>
             </div>
           </div>
@@ -379,15 +354,8 @@ const showAbout = ref(false)
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--hs-space-4);
-}
-
-.home-bottom-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--hs-space-4);
-  margin-top: var(--hs-space-5);
 }
 
 /* Events */
@@ -462,6 +430,5 @@ const showAbout = ref(false)
 
 @media (max-width: 1024px) {
   .charts-grid { grid-template-columns: 1fr; }
-  .home-bottom-grid { grid-template-columns: 1fr; }
 }
 </style>

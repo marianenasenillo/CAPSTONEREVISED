@@ -2,6 +2,8 @@
 import ChildcareExport from '@/components/reports/ChildcareExport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
@@ -334,8 +336,8 @@ const exportreportPdf = async () => {
           </select>
           <select v-model="selectedGender" class="hs-select hs-w-auto">
             <option value="">Gender</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
           </select>
           <select v-model="selectedAgeRange" class="hs-select hs-w-auto">
             <option value="">Age Range</option>
@@ -384,7 +386,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.suffix }}</td>
                 <td>{{ record.age }}</td>
                 <td>{{ record.birthdate }}</td>
-                <td>{{ record.gender }}</td>
+                <td>{{ sexDisplay(record.gender) }}</td>
                 <td>{{ record.motherName }}</td>
                 <td>
                   <v-menu :model-value="showActionsDropdown === record.id" @update:model-value="val => val ? showActionsDropdown = record.id : showActionsDropdown = null" offset-y>
@@ -473,8 +475,8 @@ const exportreportPdf = async () => {
                 <div class="hs-form-group">
                   <label class="hs-label">Gender</label>
                   <select v-model="editRecord.gender" class="hs-select">
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
                   </select>
                 </div>
               </div>

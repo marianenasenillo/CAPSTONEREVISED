@@ -83,8 +83,29 @@ export async function updateTool(tool_id, updates) {
 
 export async function deleteTool(tool_id) {
   if (!tool_id) throw new Error('tool_id required')
-  const { error } = await supabase.from('tools').delete().eq('tool_id', tool_id)
+
+  // Delete related transactions first to avoid FK constraint
+  const { error: txError } = await supabase
+    .from('tool_transactions')
+    .delete()
+    .eq('tool_id', tool_id)
+  if (txError) throw txError
+
+  const { error } = await supabase
+    .from('tools')
+    .delete()
+    .eq('tool_id', tool_id)
   if (error) throw error
+
+  // Verify the record was actually deleted (RLS may silently block)
+  const { data: check } = await supabase
+    .from('tools')
+    .select('tool_id')
+    .eq('tool_id', tool_id)
+    .maybeSingle()
+  if (check) throw new Error('Delete was blocked by a database policy. Please contact your administrator.')
+
+  return true
 }
 
 export async function getLowStockTools(threshold = 3) {
@@ -182,9 +203,9 @@ export async function updateToolTransaction(transaction_id, updates) {
     .update(updates)
     .eq('transaction_id', transaction_id)
     .select()
-    .single()
   if (error) throw error
-  return data
+  if (!data || data.length === 0) throw new Error('No transaction found or update not permitted')
+  return data[0]
 }
 
 export default {
