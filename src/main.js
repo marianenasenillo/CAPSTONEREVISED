@@ -13,7 +13,6 @@ import router from './router'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'
 
-// Load custom styles last so they override Vuetify/Bootstrap defaults
 import './assets/healthsync.css'
 
 const app = createApp(App)

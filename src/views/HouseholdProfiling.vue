@@ -5,6 +5,7 @@ import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
 import { calculateAge, getAgeGroupLabel } from '@/utils/ageClassification'
 import { useServiceDetection } from '@/composables/useServiceDetection'
+import { getEligibleServices } from '@/utils/serviceEligibility'
 
 const toast = useToast()
 const router = useRouter()
@@ -571,6 +572,9 @@ const loadDirectory = async () => {
       }
       directoryMembers.value = grouped
     }
+
+    // Load enrolled records for duplicate detection
+    await loadEnrolledRecords()
   } catch (err) {
     console.error('Failed to load directory', err)
     toast.error('Failed to load directory data.')
@@ -600,16 +604,70 @@ const quickAddForm = ref({})
 const savingQuickAdd = ref(false)
 
 const recordTypeOptions = [
-  { value: 'wra', label: 'WRA Record', icon: 'mdi-human-female', desc: 'Women of Reproductive Age' },
-  { value: 'cervical', label: 'Cervical Screening', icon: 'mdi-shield-check', desc: 'Cervical Cancer Screening' },
-  { value: 'familyplanning', label: 'Family Planning', icon: 'mdi-account-heart', desc: 'Family Planning Services' },
-  { value: 'childcare', label: 'Childcare (Vitamin A)', icon: 'mdi-baby-face-outline', desc: 'Vitamin A Supplementation' },
-  { value: 'deworming', label: 'Deworming', icon: 'mdi-medical-bag', desc: 'Preventive Health / Deworming' },
+  { value: 'wra', label: 'WRA Record', icon: 'mdi-human-female', desc: 'Women of Reproductive Age', table: 'wra_records' },
+  { value: 'cervical', label: 'Cervical Screening', icon: 'mdi-shield-check', desc: 'Cervical Cancer Screening', table: 'cervical_screening_records' },
+  { value: 'familyplanning', label: 'Family Planning', icon: 'mdi-account-heart', desc: 'Family Planning Services', table: 'family_planning_records' },
+  { value: 'childcare', label: 'Childcare (Vitamin A)', icon: 'mdi-baby-face-outline', desc: 'Vitamin A Supplementation', table: 'childcare_vitamina_records' },
+  { value: 'deworming', label: 'Deworming', icon: 'mdi-medical-bag', desc: 'Preventive Health / Deworming', table: 'deworming_records' },
 ]
+
+// Enrolled-record lookup (same pattern as ServiceEligibility.vue)
+const enrolledLookup = ref(new Set())
+
+function makeEnrolledKey(firstname, lastname, table) {
+  return `${(firstname || '').trim().toLowerCase()}|${(lastname || '').trim().toLowerCase()}|${table}`
+}
+
+function isRecordEnrolled(person, table) {
+  const fn = person.firstname || person.data?.firstname || ''
+  const ln = person.lastname || person.data?.lastname || ''
+  return enrolledLookup.value.has(makeEnrolledKey(fn, ln, table))
+}
+
+async function loadEnrolledRecords() {
+  const lookup = new Set()
+  const tableConfigs = [
+    { table: 'childcare_vitamina_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'deworming_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'wra_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'cervical_screening_records', fnCol: 'firstname', lnCol: 'lastname' },
+    { table: 'family_planning_records', fnCol: 'firstname', lnCol: 'surname' },
+  ]
+  const queries = tableConfigs.map(async ({ table, fnCol, lnCol }) => {
+    try {
+      const { data, error } = await supabase.from(table).select(`${fnCol}, ${lnCol}`)
+      if (error) { console.warn(`[enrolled] ${table}:`, error.message); return }
+      for (const row of data || []) {
+        lookup.add(makeEnrolledKey(row[fnCol], row[lnCol], table))
+      }
+    } catch (err) { console.warn(`[enrolled] ${table}:`, err) }
+  })
+  await Promise.all(queries)
+  enrolledLookup.value = lookup
+}
+
+// Compute eligible record types for the currently selected person
+const eligibleRecordTypes = ref([])
+
+function computeEligibleRecordTypes(person) {
+  const eligible = getEligibleServices(person)
+  // Map eligible service tables → record type option values
+  const eligibleTables = new Set(eligible.map(e => e.table))
+  eligibleRecordTypes.value = recordTypeOptions.filter(opt => eligibleTables.has(opt.table))
+}
+
+function onRecordTypeClick(opt) {
+  if (isRecordEnrolled(quickAddPerson.value?.data, opt.table)) {
+    toast.warning(`${quickAddPerson.value?.data?.firstname} ${quickAddPerson.value?.data?.lastname} already has a ${opt.label} record.`)
+    return
+  }
+  selectedRecordType.value = opt.value
+}
 
 const openRecordSelector = (person, type, headPurok) => {
   quickAddPerson.value = { type, data: { ...person }, headPurok: headPurok || person.purok || '' }
   selectedRecordType.value = ''
+  computeEligibleRecordTypes(person)
   showRecordSelector.value = true
 }
 
@@ -664,6 +722,7 @@ const proceedToForm = () => {
 
 const saveQuickAddRecord = async () => {
   savingQuickAdd.value = true
+  const labels = { wra: 'WRA', cervical: 'Cervical Screening', familyplanning: 'Family Planning', childcare: 'Childcare', deworming: 'Deworming' }
   try {
     const f = quickAddForm.value
     let table, payload
@@ -716,13 +775,25 @@ const saveQuickAddRecord = async () => {
       }
     }
 
+    // Duplicate check before insert
+    const personData = quickAddPerson.value?.data
+    if (personData && isRecordEnrolled(personData, table)) {
+      toast.warning(`This person already has a ${labels[selectedRecordType.value]} record. Duplicate not allowed.`)
+      savingQuickAdd.value = false
+      return
+    }
+
     const { error } = await supabase.from(table).insert([payload])
     if (error) {
       console.error(`[quickAdd] Supabase error for ${table}:`, error.code, error.message, '\nPayload:', JSON.stringify(payload, null, 2))
       throw error
     }
 
-    const labels = { wra: 'WRA', cervical: 'Cervical Screening', familyplanning: 'Family Planning', childcare: 'Childcare', deworming: 'Deworming' }
+    // Update enrolled lookup so repeating the add will show gray
+    const fn = personData?.firstname || f.firstname || ''
+    const ln = personData?.lastname || f.lastname || f.surname || ''
+    enrolledLookup.value.add(makeEnrolledKey(fn, ln, table))
+
     toast.success(`${labels[selectedRecordType.value]} record saved successfully!`)
     showQuickAddForm.value = false
   } catch (err) {
@@ -892,14 +963,24 @@ const saveQuickAddRecord = async () => {
             <p class="hs-text-sm" style="margin-bottom:12px;color:var(--hs-gray-500);">
               Adding record for: <strong>{{ quickAddPerson?.data?.lastname }}, {{ quickAddPerson?.data?.firstname }}</strong>
             </p>
-            <div class="record-type-grid">
-              <div v-for="opt in recordTypeOptions" :key="opt.value"
+            <div v-if="eligibleRecordTypes.length === 0" class="dir-empty" style="padding:24px 0;">
+              <span class="mdi mdi-alert-circle-outline" style="font-size:36px;color:var(--hs-gray-400);"></span>
+              <p style="margin-top:8px;color:var(--hs-gray-500);">This person is not eligible for any record types based on their age, sex, and civil status.</p>
+            </div>
+            <div v-else class="record-type-grid">
+              <div v-for="opt in eligibleRecordTypes" :key="opt.value"
                 class="record-type-option"
-                :class="{ 'record-type-option--active': selectedRecordType === opt.value }"
-                @click="selectedRecordType = opt.value">
+                :class="{
+                  'record-type-option--active': selectedRecordType === opt.value,
+                  'record-type-option--enrolled': isRecordEnrolled(quickAddPerson?.data, opt.table)
+                }"
+                @click="onRecordTypeClick(opt)">
                 <span class="mdi" :class="opt.icon" style="font-size:24px;"></span>
                 <strong>{{ opt.label }}</strong>
                 <span class="record-type-desc">{{ opt.desc }}</span>
+                <span v-if="isRecordEnrolled(quickAddPerson?.data, opt.table)" class="record-type-enrolled-badge">
+                  <span class="mdi mdi-check-circle"></span> Already Registered
+                </span>
               </div>
             </div>
           </div>
@@ -1948,6 +2029,16 @@ const saveQuickAddRecord = async () => {
 }
 .record-type-option:hover { border-color: var(--hs-gray-300); background: var(--hs-gray-50); }
 .record-type-option--active { border-color: var(--hs-primary); background: var(--hs-primary-bg); }
+.record-type-option--enrolled {
+  opacity: 0.55; cursor: default; border-color: var(--hs-gray-100); background: var(--hs-gray-50);
+}
+.record-type-option--enrolled:hover { border-color: var(--hs-gray-100); background: var(--hs-gray-50); }
+.record-type-option--enrolled .mdi:first-child { color: var(--hs-gray-400); }
+.record-type-option--enrolled strong { color: var(--hs-gray-400); }
+.record-type-enrolled-badge {
+  display: flex; align-items: center; gap: 3px; margin-top: 2px;
+  font-size: 10px; color: var(--hs-gray-400); font-weight: 600;
+}
 .record-type-option strong { font-size: var(--hs-font-size-xs); color: var(--hs-gray-800); }
 .record-type-desc { font-size: 10px; color: var(--hs-gray-400); }
 

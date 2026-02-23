@@ -1,8 +1,5 @@
-import { describe, it, expect, ref, computed } from 'vitest'
-import { nextTick } from 'vue'
+import { describe, it, expect } from 'vitest'
 
-// We need to test usePagination which uses Vue reactivity
-// Import Vue's ref to make it work
 import { ref as vueRef } from 'vue'
 import { usePagination } from '../../composables/usePagination'
 
