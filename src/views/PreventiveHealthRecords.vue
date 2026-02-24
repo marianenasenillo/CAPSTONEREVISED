@@ -186,91 +186,18 @@ const archiveRecord = async (record) => {
 }
 
 // Export PDF: capture the visible table and exclude the Actions column
-const exportPdf = async () => {
-  const containerEl = document.querySelector('.hs-table-scroll')
-  if (!containerEl) {
-    toast.error('Table not found.')
-    return
-  }
+function downloadCsv(headers, rows, filename) {
+  const esc = v => { if (v === null || v === undefined) return ''; const s = String(v); return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+  const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url)
+}
 
-  // temporarily expand container so full table is rendered
-  const originalWrapperHeight = containerEl.style.maxHeight
-  const originalWrapperOverflow = containerEl.style.overflow
-  containerEl.style.maxHeight = 'none'
-  containerEl.style.overflow = 'visible'
-
-  const table = containerEl.querySelector('table')
-  if (!table) {
-    if (wrapper) {
-      wrapper.style.height = originalWrapperHeight
-      wrapper.style.overflow = originalWrapperOverflow
-    }
-    toast.error('Table element not found for export.')
-    return
-  }
-
-  // find Actions column index and hide it during export
-  const headers = Array.from(table.querySelectorAll('thead th'))
-  let actionsIndex = -1
-  headers.forEach((th, idx) => {
-    if (th.textContent && th.textContent.trim().toLowerCase() === 'actions') actionsIndex = idx
-  })
-
-  const hiddenElements = []
-  if (actionsIndex >= 0) {
-    const th = headers[actionsIndex]
-    hiddenElements.push({ el: th, display: th.style.display })
-    th.style.display = 'none'
-
-    const rows = Array.from(table.querySelectorAll('tbody tr'))
-    rows.forEach(row => {
-      const cells = row.querySelectorAll('td')
-      if (cells[actionsIndex]) {
-        hiddenElements.push({ el: cells[actionsIndex], display: cells[actionsIndex].style.display })
-        cells[actionsIndex].style.display = 'none'
-      }
-    })
-  }
-
-  try {
-    await new Promise(r => setTimeout(r, 200))
-
-    const canvas = await html2canvas(containerEl, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff'
-    })
-
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'mm', 'a4')
-    const imgWidth = 210
-    const pageHeight = 295
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
-    let heightLeft = imgHeight
-    let position = 0
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pageHeight
-
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-    }
-
-    pdf.save('deworming-report.pdf')
-  } catch (err) {
-    console.error('Error generating PDF:', err)
-    toast.error('Error generating PDF. Please try again.')
-  } finally {
-    hiddenElements.forEach(({ el, display }) => { el.style.display = display || '' })
-    if (wrapper) {
-      wrapper.style.height = originalWrapperHeight
-      wrapper.style.overflow = originalWrapperOverflow
-    }
-  }
+const exportCsv = () => {
+  const headers = ['Purok','Last Name','First Name','Middle Name','Mother Name','Sex','Birthday','Age']
+  const rows = filteredRecords.value.map(r => [r.purok, r.lastname, r.firstname, r.middlename, r.mother_name, r.sex, r.birthday, r.age])
+  downloadCsv(headers, rows, 'deworming_records.csv')
 }
 const exportreportPdf = async () => {
   if (!reportRef.value) return
@@ -365,7 +292,7 @@ const exportreportPdf = async () => {
               <span class="mdi mdi-magnify"></span>
               <input v-model="searchQuery" type="search" placeholder="Search..." />
             </div>
-          <button class="hs-btn hs-btn-primary" @click="exportPdf"><span class="mdi mdi-file-export-outline"></span> Export</button>
+          <button class="hs-btn hs-btn-primary" @click="exportCsv"><span class="mdi mdi-file-delimited-outline"></span> Export CSV</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning" @click="router.push('/phsarchived')"><span class="mdi mdi-archive-outline"></span> Archived</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
         </div>

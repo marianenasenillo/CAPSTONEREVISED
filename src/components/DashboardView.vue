@@ -429,9 +429,9 @@ async function saveProfile() {
           <span v-if="!sidebarCollapsed || isMobile" class="hs-nav-label">Dashboard</span>
         </button>
 
-        <!-- Household Profiling (BHW only) -->
+        <!-- Household Profiling (BHW + Admin) -->
         <button
-          v-if="userRole === 'BHW'"
+          v-if="userRole === 'BHW' || userRole === 'Admin'"
           class="hs-nav-item"
           :class="{ active: isActive('/householdprofile') }"
           @click="navigateTo('/householdprofile')"

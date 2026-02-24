@@ -170,6 +170,8 @@ const confirmAddMedicine = async () => {
     medicine.value = await medicineApi.listMedicine()
     showAddMedicineModal.value = false
     toast.success('Medicine added successfully.')
+    // Notify BHW
+    notifyRole('BHW', { type: 'inventory_update', title: `New medicine added: ${addMedicineForm.value.name}`, message: `Qty: ${addMedicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-success)' })
   } catch (err) { console.error('Failed to create medicine', err); toast.error('Failed to add medicine: ' + (err.message || err)) }
 }
 
@@ -192,6 +194,8 @@ const confirmAddTool = async () => {
     tools.value = await toolsApi.listTools()
     showAddToolModal.value = false
     toast.success('Tool added successfully.')
+    // Notify BHW
+    notifyRole('BHW', { type: 'inventory_update', title: `New tool added: ${addToolForm.value.name}`, message: `Qty: ${addToolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-success)' })
   } catch (err) { console.error('Failed to create tool', err); toast.error('Failed to add tool: ' + (err.message || err)) }
 }
 
@@ -213,6 +217,8 @@ const confirmEditMedicine = async () => {
     medicine.value = await medicineApi.listMedicine()
     showEditMedicineModal.value = false; showDetailModal.value = false
     toast.success('Medicine updated successfully.')
+    // Notify BHW
+    notifyRole('BHW', { type: 'inventory_update', title: `Medicine updated: ${editMedicineForm.value.name}`, message: `Qty: ${editMedicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-info)' })
   } catch (err) { console.error('Failed to update medicine', err); toast.error('Failed to update medicine: ' + (err.message || err)) }
 }
 const confirmDeleteMedicine = async (med) => {
@@ -239,6 +245,8 @@ const confirmEditTool = async () => {
     tools.value = await toolsApi.listTools()
     showEditToolModal.value = false; showDetailModal.value = false
     toast.success('Tool updated successfully.')
+    // Notify BHW
+    notifyRole('BHW', { type: 'inventory_update', title: `Tool updated: ${editToolForm.value.name}`, message: `Qty: ${editToolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-info)' })
   } catch (err) { console.error('Failed to update tool', err); toast.error('Failed to update tool: ' + (err.message || err)) }
 }
 const confirmDeleteTool = async (tool) => {
@@ -250,6 +258,13 @@ const confirmDeleteTool = async (tool) => {
     showDetailModal.value = false
     toast.success('Tool deleted successfully.')
   } catch (err) { console.error('Failed to delete tool', err); toast.error('Failed to delete tool: ' + (err.message || err)) }
+}
+
+// Notify helper — inserts a notification row targeting a role
+async function notifyRole(targetRole, { type, title, message, icon, color, link }) {
+  try {
+    await supabase.from('notifications').insert({ target_role: targetRole, type, title, message, icon: icon || 'mdi-bell', color: color || 'var(--hs-info)', link: link || '/inventory' })
+  } catch (e) { console.error('Failed to send notification', e) }
 }
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'

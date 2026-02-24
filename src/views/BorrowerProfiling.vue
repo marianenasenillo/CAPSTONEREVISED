@@ -19,6 +19,13 @@ import {
 
 const toast = useToast()
 
+// Notify helper — inserts a notification row targeting a role
+async function notifyRole(targetRole, { type, title, message, icon, color, link }) {
+  try {
+    await supabase.from('notifications').insert({ target_role: targetRole, type, title, message, icon: icon || 'mdi-bell', color: color || 'var(--hs-info)', link: link || '/borrowers' })
+  } catch (e) { console.error('Failed to send notification', e) }
+}
+
 const loading = ref(true)
 const activeTab = ref('borrowers') // 'borrowers' | 'medicine_log' | 'tool_log' | 'analytics'
 const userBarangay = ref('')
@@ -207,6 +214,9 @@ async function submitMedicineRequest() {
     await createMedicineTransaction(medicineForm.value)
     toast.success('Medicine provided successfully')
     showMedicineForm.value = false
+    // Notify Admin about medicine provision
+    const med = medicines.value.find(m => m.medicine_id === medicineForm.value.medicine_id)
+    notifyRole('Admin', { type: 'borrower_activity', title: `Medicine provided: ${med?.name || 'Unknown'}`, message: `Qty: ${medicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-success)', link: '/inventory' })
     await Promise.all([loadData(), loadAnalytics()])
   } catch (err) {
     toast.error(err.message || 'Failed to provide medicine')
@@ -233,6 +243,9 @@ async function submitToolBorrow() {
     await createToolBorrowTransaction(toolForm.value)
     toast.success('Tool borrowed successfully')
     showToolForm.value = false
+    // Notify Admin about tool borrow
+    const tool = tools.value.find(t => t.tool_id === toolForm.value.tool_id)
+    notifyRole('Admin', { type: 'borrower_activity', title: `Tool borrowed: ${tool?.name || 'Unknown'}`, message: `Qty: ${toolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-warning)', link: '/inventory' })
     await Promise.all([loadData(), loadAnalytics()])
   } catch (err) {
     toast.error(err.message || 'Failed to borrow tool')
@@ -244,6 +257,8 @@ async function handleReturnTool(tx) {
   try {
     await returnTool(tx.transaction_id)
     toast.success('Tool returned successfully')
+    // Notify Admin about tool return
+    notifyRole('Admin', { type: 'borrower_activity', title: `Tool returned: ${tx.tool_name || 'Unknown'}`, message: `Transaction #${tx.transaction_id}`, icon: 'mdi-wrench', color: 'var(--hs-info)', link: '/inventory' })
     await loadAnalytics()
   } catch (err) {
     toast.error(err.message || 'Failed to return tool')

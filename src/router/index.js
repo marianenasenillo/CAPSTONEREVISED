@@ -53,8 +53,8 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     // Guest / Public routes
-    { path: '/', name: 'Login', component: LoginView, meta: { guest: true } },
-    { path: '/public', name: 'PublicDashboard', component: PublicDashboard, meta: { public: true } },
+    { path: '/', name: 'PublicDashboard', component: PublicDashboard, meta: { public: true } },
+    { path: '/admin', name: 'Login', component: LoginView, meta: { guest: true } },
     { path: '/adminregister', name: 'adminregister', component: AdminRegister, meta: { guest: true } },
 
     // Authenticated routes
@@ -67,7 +67,7 @@ const router = createRouter({
         { path: 'dashboard', name: 'Dashboard', redirect: '/home' },
 
         // Health Services (BHW + Admin)
-        { path: 'householdprofile', name: 'householdprofiling', component: HouseholdProfiling, meta: { minRole: 'bhw' } },
+        { path: 'householdprofile', name: 'householdprofiling', component: HouseholdProfiling },
         { path: 'maternalservices', name: 'maternalservices', component: MaternalServices, meta: { minRole: 'bhw' } },
         { path: 'childcare', name: 'childcare', component: ChildcareServices, meta: { minRole: 'bhw' } },
         { path: 'familyplanning', name: 'familyplanning', component: FamilyPlanning, meta: { minRole: 'bhw' } },
@@ -108,7 +108,7 @@ const router = createRouter({
       ],
     },
 
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    { path: '/:pathMatch(.*)*', redirect: '/admin' },
   ],
 })
 
@@ -131,7 +131,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (needsAuth && !session) {
-    return next('/')
+    return next('/admin')
   }
 
   if (session) {

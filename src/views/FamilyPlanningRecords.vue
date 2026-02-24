@@ -184,64 +184,18 @@ const archiveRecord = async (record) => {
   }
 }
 
-const exportPdf = async () => {
-  const element = document.querySelector('.hs-table-scroll')
-  if (!element) {
-    toast.error('Table not found.')
-    return
-  }
+function downloadCsv(headers, rows, filename) {
+  const esc = v => { if (v === null || v === undefined) return ''; const s = String(v); return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+  const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url)
+}
 
-  try {
-    let originalHeight = element.style.maxHeight
-    let originalOverflow = element.style.overflow
-    element.style.maxHeight = 'none'
-    element.style.overflow = 'visible'
-
-    const table = element.querySelector('table')
-    let originalTableHeight = ''
-    if (table) {
-      originalTableHeight = table.style.height
-      table.style.height = 'auto'
-    }
-
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff'
-    })
-
-    element.style.maxHeight = originalHeight
-    element.style.overflow = originalOverflow
-    if (table) {
-      table.style.height = originalTableHeight
-    }
-
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'mm', 'a4')
-
-    const imgWidth = 210
-    const pageHeight = 295
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
-    let heightLeft = imgHeight
-
-    let position = 0
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pageHeight
-
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
-    }
-
-    pdf.save('family-planning-report.pdf')
-  } catch (error) {
-    console.error('Error generating PDF:', error)
-    toast.error('Error generating PDF. Please try again.')
-  }
+const exportCsv = () => {
+  const headers = ['Purok','Last Name','First Name','Middle Name','Mother Name','Sex','Birthday','Age']
+  const rows = filteredRecords.value.map(r => [r.purok, r.lastname, r.firstname, r.middlename, r.mother_name, r.sex, r.birthday, r.age])
+  downloadCsv(headers, rows, 'family_planning_records.csv')
 }
 const exportreportPdf = async () => {
   if (!reportRef.value) return
@@ -338,7 +292,7 @@ const exportreportPdf = async () => {
               <span class="mdi mdi-magnify"></span>
               <input v-model="searchQuery" type="search" placeholder="Search..." />
             </div>
-          <button class="hs-btn hs-btn-primary" @click="exportPdf"><span class="mdi mdi-file-export-outline"></span> Export</button>
+          <button class="hs-btn hs-btn-primary" @click="exportCsv"><span class="mdi mdi-file-delimited-outline"></span> Export CSV</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning" @click="router.push('/fpsarchived')"><span class="mdi mdi-archive-outline"></span> Archived</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
         </div>

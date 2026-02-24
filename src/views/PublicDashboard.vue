@@ -119,16 +119,18 @@ onMounted(async () => {
               <p class="public-subtitle">Municipality of Buenavista, Agusan del Norte</p>
             </div>
           </div>
-          <button class="hs-btn hs-btn-primary" @click="router.push('/')">
+          <button class="hs-btn hs-btn-primary" @click="router.push('/admin')">
             <span class="mdi mdi-login"></span> Sign In
           </button>
         </div>
-        <div class="public-hero-text">
-          <h2>Public Health Dashboard</h2>
-          <p>Stay informed about community health programs, upcoming events, and available medical resources in our barangay.</p>
-        </div>
       </div>
     </header>
+
+    <!-- Page Intro -->
+    <div class="public-intro" style="margin-bottom: 20px;">
+      <h2 class="public-intro-title">Public Health Dashboard</h2>
+      <p class="public-intro-desc">Stay informed about community health programs, upcoming events, and available medical resources in our barangay.</p>
+    </div>
 
     <main class="public-main">
       <!-- Loading -->
@@ -406,27 +408,28 @@ onMounted(async () => {
 /* Hero Header */
 .public-hero {
   position: relative;
-  background: linear-gradient(135deg, var(--hs-primary) 0%, var(--hs-primary-dark) 50%, var(--hs-primary-darker) 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #e8f5e9 45%, #c8e6c9 100%);
   padding: 0;
   overflow: hidden;
+  border-bottom: 2px solid #a5d6a7;
 }
 .public-hero-bg {
   position: absolute;
   inset: 0;
   background: url('/images/logo.png') center/20% no-repeat;
-  opacity: 0.04;
+  opacity: 0.06;
 }
 .public-hero-content {
   position: relative;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px 24px 40px;
+  padding: 20px 24px;
 }
 .public-hero-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
+  margin-bottom: 0;
 }
 .public-brand {
   display: flex;
@@ -434,45 +437,67 @@ onMounted(async () => {
   gap: 14px;
 }
 .public-logo {
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.15));
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 2px 10px rgba(46, 125, 50, 0.18);
 }
 .public-title {
   font-size: var(--hs-font-size-lg);
-  font-weight: 600;
-  color: var(--hs-white);
+  font-weight: 700;
+  color: #1b5e20;
   margin: 0;
   line-height: 1.2;
 }
 .public-subtitle {
   font-size: var(--hs-font-size-xs);
-  color: rgba(255, 255, 255, 0.7);
+  color: #388e3c;
   margin: 0;
 }
 .public-hero-text {
   max-width: 600px;
+  display: none;
 }
 .public-hero-text h2 {
   font-size: var(--hs-font-size-3xl);
   font-weight: 700;
-  color: var(--hs-white);
+  color: #1b5e20;
   margin: 0 0 10px;
   letter-spacing: -0.02em;
 }
 .public-hero-text p {
   font-size: var(--hs-font-size-base);
-  color: rgba(255, 255, 255, 0.8);
+  color: #2e7d32;
   line-height: 1.7;
   margin: 0;
+}
+.public-intro {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 24px 0;
+}
+.public-intro-title {
+  font-size: var(--hs-font-size-2xl);
+  font-weight: 700;
+  color: var(--hs-gray-900);
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.public-intro-desc {
+  font-size: var(--hs-font-size-base);
+  color: var(--hs-gray-500);
+  margin: 0;
+  line-height: 1.7;
 }
 
 /* Main */
 .public-main {
   max-width: 1200px;
-  margin: -20px auto 0;
-  padding: 24px 24px 28px;
+  margin: 0 auto;
+  padding: 0 24px 28px;
   position: relative;
   z-index: 1;
 }

@@ -245,6 +245,10 @@ onMounted(async () => {
   userBarangay.value = user?.user_metadata?.barangay || ''
   barangay.value = userBarangay.value
   headBarangay.value = userBarangay.value
+  // Admin defaults to directory tab (no services tab for admin)
+  if (userRole.value === 'Admin') {
+    profilingTab.value = 'directory'
+  }
 })
 
 const goPrevPage = () => router.push('/home')
@@ -821,7 +825,7 @@ const saveQuickAddRecord = async () => {
 
       <!-- Tab Navigation -->
       <div class="hs-tabs">
-        <button class="hs-tab" :class="{ active: profilingTab === 'services' }" @click="profilingTab = 'services'">
+        <button v-if="userRole === 'BHW'" class="hs-tab" :class="{ active: profilingTab === 'services' }" @click="profilingTab = 'services'">
           <span class="mdi mdi-clipboard-text-outline"></span> Services
         </button>
         <button class="hs-tab" :class="{ active: profilingTab === 'directory' }" @click="profilingTab = 'directory'">
