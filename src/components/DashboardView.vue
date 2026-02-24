@@ -22,6 +22,20 @@ const notifPageSize = 10
 const hasMoreNotifs = ref(false)
 const loadingNotifs = ref(false)
 const unreadCount = ref(0)
+const notifSearchQuery = ref('')
+
+const filteredNotifications = computed(() => {
+  const q = notifSearchQuery.value.trim().toLowerCase()
+  if (!q) return notifications.value
+  return notifications.value.filter(n => {
+    const title = (n.title || '').toLowerCase()
+    const message = (n.message || '').toLowerCase()
+    const type = (n.type || '').toLowerCase()
+    const dateStr = n.created_at ? new Date(n.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase() : ''
+    const relTime = formatNotifTime(n.created_at).toLowerCase()
+    return title.includes(q) || message.includes(q) || type.includes(q) || dateStr.includes(q) || relTime.includes(q)
+  })
+})
 
 async function fetchUnreadCount() {
   try {
@@ -576,11 +590,16 @@ async function saveProfile() {
               <strong>Notifications</strong>
               <button v-if="unreadCount > 0" class="hs-btn hs-btn-ghost hs-btn-sm" @click="markAllRead">Mark all read</button>
             </div>
+            <div class="notif-search-wrap">
+              <span class="mdi mdi-magnify notif-search-icon"></span>
+              <input v-model="notifSearchQuery" class="notif-search-input" type="text" placeholder="Search notifications..." />
+              <button v-if="notifSearchQuery" class="notif-search-clear" @click="notifSearchQuery = ''"><span class="mdi mdi-close"></span></button>
+            </div>
             <div class="notification-scroll">
               <div v-if="loadingNotifs && notifications.length === 0" class="hs-empty-state">
                 <p>Loading...</p>
               </div>
-              <div v-for="n in notifications" :key="n.id" class="hs-notification-item" :class="{ unread: !n.is_read }" @click="markOneRead(n)">
+              <div v-for="n in filteredNotifications" :key="n.id" class="hs-notification-item" :class="{ unread: !n.is_read }" @click="markOneRead(n)">
                 <div class="hs-notif-icon-wrap" :style="{ background: (n.color || 'var(--hs-info)') + '18' }">
                   <span class="mdi" :class="n.icon || 'mdi-bell'" :style="{ color: n.color || 'var(--hs-info)' }"></span>
                 </div>
@@ -591,7 +610,10 @@ async function saveProfile() {
                 </div>
                 <span v-if="!n.is_read" class="hs-notif-dot"></span>
               </div>
-              <div v-if="!loadingNotifs && notifications.length === 0" class="hs-empty-state">
+              <div v-if="!loadingNotifs && filteredNotifications.length === 0 && notifSearchQuery" class="hs-empty-state">
+                <p>No matching notifications</p>
+              </div>
+              <div v-else-if="!loadingNotifs && notifications.length === 0" class="hs-empty-state">
                 <p>No notifications</p>
               </div>
               <div v-if="hasMoreNotifs" class="notif-load-more">

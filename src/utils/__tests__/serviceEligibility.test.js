@@ -70,12 +70,10 @@ describe('getEligibleServices', () => {
     expect(getEligibleServices({ birthdate: 'invalid' })).toEqual([])
   })
 
-  it('returns immunization/growth_monitoring/vitamin_a for infant (0 yrs)', () => {
+  it('returns vitamin_a for infant (0 yrs)', () => {
     const member = makeMember({ birthdate: '2025-06-01', sex: 'Male', civil_status: '' })
     const services = getEligibleServices(member)
     const keys = services.map(s => s.key)
-    expect(keys).toContain('immunization')
-    expect(keys).toContain('growth_monitoring')
     expect(keys).toContain('vitamin_a')
     expect(keys).not.toContain('deworming_child')
   })
@@ -85,13 +83,6 @@ describe('getEligibleServices', () => {
     const services = getEligibleServices(member)
     const keys = services.map(s => s.key)
     expect(keys).toContain('deworming_child')
-  })
-
-  it('returns school_health for child aged 5-14', () => {
-    const member = makeMember({ birthdate: '2016-01-01', sex: 'Male', civil_status: '' })
-    const services = getEligibleServices(member)
-    const keys = services.map(s => s.key)
-    expect(keys).toContain('school_health')
   })
 
   it('returns WRA for female aged 15-49', () => {

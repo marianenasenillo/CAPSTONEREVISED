@@ -2,6 +2,8 @@
 import HouseholdExport from '@/components/reports/HouseholdExport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import { calculateAge } from '@/utils/ageClassification'
+import { useServiceDetection } from '@/composables/useServiceDetection'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { ref, onMounted, computed, watch } from 'vue'
@@ -36,8 +38,12 @@ const memberSearchQuery = ref('')
 const showAddMemberModal = ref(false)
 const newMember = ref({})
 
+// Service detection for add member form
+const memberDetection = useServiceDetection()
+
 const initNewMember = () => {
   if (!selectedHead.value) return
+  memberDetection.resetDetection()
   newMember.value = {
     head_id: selectedHead.value.head_id,
     barangay: selectedHead.value.barangay || '',
@@ -84,8 +90,37 @@ const saveNewMember = async () => {
       throw error
     }
 
-    toast.success('Member added successfully.')
+    // Insert detected service records
+    const baseData = {
+      purok: newMember.value.purok || selectedHead.value?.purok || '',
+      lastname: newMember.value.lastname,
+      firstname: newMember.value.firstname,
+      middlename: newMember.value.middlename,
+      suffix: newMember.value.suffix,
+      birthdate: newMember.value.birthdate,
+      age: newMember.value.age,
+      sex: newMember.value.sex,
+      civil_status: newMember.value.civil_status,
+    }
+    const servicePayloads = memberDetection.buildPayloads(baseData)
+    const serviceErrors = []
+    for (const sp of servicePayloads) {
+      const { error: svcErr } = await supabase.from(sp.table).insert([sp.payload])
+      if (svcErr) {
+        console.error(`Failed to insert ${sp.label}:`, svcErr)
+        serviceErrors.push(sp.label)
+      }
+    }
+
+    if (serviceErrors.length > 0) {
+      toast.warning(`Member added, but some service records failed: ${serviceErrors.join(', ')}`)
+    } else if (servicePayloads.length > 0) {
+      toast.success(`Member added with ${servicePayloads.length} service record(s)!`)
+    } else {
+      toast.success('Member added successfully.')
+    }
     showAddMemberModal.value = false
+    memberDetection.resetDetection()
     if (selectedHead.value) await viewMembers(selectedHead.value)
   } catch (e) {
     console.error('[addMember] Error:', e?.code, e?.message, e)
@@ -181,6 +216,41 @@ const filteredRecords = computed(() => {
 const { currentPage, itemsPerPage, itemsPerPageOptions, totalItems, totalPages, paginatedData, startIndex, endIndex, visiblePages, goToPage, nextPage, prevPage, firstPage, lastPage, resetPage } = usePagination(filteredRecords)
 
 watch([searchQuery, selectedPurok, selectedSex, selectedCivilStatus], () => resetPage())
+
+// Auto-calculate age from birthdate for new member & detect services
+watch(() => newMember.value.birthdate, (val) => {
+  if (val) {
+    const calc = calculateAge(val)
+    newMember.value.age = calc !== null && calc >= 0 ? calc : ''
+    memberDetection.detectServices({
+      birthdate: val,
+      sex: newMember.value.sex,
+      civil_status: newMember.value.civil_status,
+    })
+  } else {
+    newMember.value.age = ''
+    memberDetection.resetDetection()
+  }
+})
+
+// Re-detect services when sex or civil_status changes
+watch([() => newMember.value.sex, () => newMember.value.civil_status], () => {
+  if (newMember.value.birthdate) {
+    memberDetection.detectServices({
+      birthdate: newMember.value.birthdate,
+      sex: newMember.value.sex,
+      civil_status: newMember.value.civil_status,
+    })
+  }
+})
+
+// Auto-calculate age from birthdate for editing member
+watch(() => editingMember.value?.birthdate, (val) => {
+  if (val && editingMember.value) {
+    const calc = calculateAge(val)
+    editingMember.value.age = calc !== null && calc >= 0 ? calc : ''
+  }
+})
 
 const handleSearch = () => {
   const el = document.querySelector('.hs-table-scroll')
@@ -401,6 +471,19 @@ const exportCsv = () => {
   const rows = filteredRecords.value.map(r => [r.head_id, r.purok, r.lastname, r.firstname, r.middlename, r.suffix, r.birthdate, r.age, r.sex, r.civil_status, r.contact_number, r.occupation, r.no_of_families, r.population, r.female_count, r.male_count])
   downloadCsv(headers, rows, 'household_records.csv')
 }
+
+const exportMembersCsv = () => {
+  const headName = selectedHead.value ? `${selectedHead.value.lastname}_${selectedHead.value.firstname}` : 'members'
+  const headers = ['Last Name','First Name','Middle Name','Relationship','Birthdate','Age','Sex','Civil Status','Education','Religion','Ethnicity','PhilHealth ID','4Ps Member','FP Method','Medical History','Water Source','Toilet Facility']
+  const rows = filteredModalMembers.value.map(m => [
+    m.lastname, m.firstname, m.middlename, m.relationship, m.birthdate, m.age,
+    m.sex === 'M' ? 'Male' : m.sex === 'F' ? 'Female' : m.sex,
+    m.civil_status, m.education, m.religion, m.ethnicity,
+    m.philhealth_id || '', m.is_4ps_member ? 'Yes' : 'No',
+    m.fp_method_used || '', m.medical_history || '', m.water_source || '', m.toilet_facility || ''
+  ])
+  downloadCsv(headers, rows, `${headName}_members.csv`)
+}
 const exportreportPdf = async () => {
   if (!reportRef.value) return
   const element = reportRef.value
@@ -602,6 +685,9 @@ const exportreportPdf = async () => {
               <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-primary hs-btn-sm" @click="initNewMember">
                 <span class="mdi mdi-plus"></span> Add Member
               </button>
+              <button class="hs-btn hs-btn-primary hs-btn-sm" @click="exportMembersCsv" title="Export members as CSV">
+                <span class="mdi mdi-file-delimited-outline"></span> Export CSV
+              </button>
             </div>
 
             <div v-if="members.length === 0" class="members-empty">
@@ -729,7 +815,10 @@ const exportreportPdf = async () => {
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Age</label>
-                  <input v-model.number="newMember.age" type="number" class="hs-input" min="0">
+                  <input v-model.number="newMember.age" type="number" class="hs-input hs-input--readonly" min="0" readonly>
+                  <small v-if="newMember.birthdate" class="hs-form-hint" style="color: var(--hs-success);">
+                    <span class="mdi mdi-check-circle"></span> Auto-calculated from birthdate
+                  </small>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Sex</label>
@@ -754,17 +843,34 @@ const exportreportPdf = async () => {
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Education</label>
-                  <input v-model="newMember.education" type="text" class="hs-input">
+                  <select v-model="newMember.education" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Elementary">Elementary</option>
+                    <option value="High School">High School</option>
+                    <option value="College">College</option>
+                    <option value="Vocational">Vocational</option>
+                    <option value="None">None</option>
+                  </select>
                 </div>
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Religion</label>
-                  <input v-model="newMember.religion" type="text" class="hs-input">
+                  <select v-model="newMember.religion" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Catholic">Catholic</option>
+                    <option value="Islam">Islam</option>
+                    <option value="Protestant">Protestant</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Ethnicity</label>
-                  <input v-model="newMember.ethnicity" type="text" class="hs-input">
+                  <select v-model="newMember.ethnicity" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="IP">IP</option>
+                    <option value="Non-IP">Non-IP</option>
+                  </select>
                 </div>
               </div>
               <div class="hs-form-row">
@@ -783,26 +889,101 @@ const exportreportPdf = async () => {
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Medical History</label>
-                  <input v-model="newMember.medical_history" type="text" class="hs-input">
+                  <select v-model="newMember.medical_history" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="None">None</option>
+                    <option value="HPN">Hypertension (HPN)</option>
+                    <option value="DM">Diabetes Mellitus (DM)</option>
+                    <option value="TB">Tuberculosis (TB)</option>
+                    <option value="O">Others</option>
+                  </select>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">FP Method Used</label>
-                  <input v-model="newMember.fp_method_used" type="text" class="hs-input">
+                  <input v-model="newMember.fp_method_used" type="text" class="hs-input" placeholder="e.g. Pills, IUD...">
                 </div>
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Water Source</label>
-                  <input v-model="newMember.water_source" type="text" class="hs-input">
+                  <select v-model="newMember.water_source" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Piped/Faucet">Piped/Faucet</option>
+                    <option value="Well">Well</option>
+                    <option value="Spring">Spring</option>
+                    <option value="Rain">Rain</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Toilet Facility</label>
-                  <input v-model="newMember.toilet_facility" type="text" class="hs-input">
+                  <select v-model="newMember.toilet_facility" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Water-sealed">Water-sealed</option>
+                    <option value="Open pit">Open pit</option>
+                    <option value="None">None</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
               </div>
+              <!-- Auto-Detected Eligible Services -->
+              <div v-if="memberDetection.detectedTables.value.length > 0" class="svc-detection-panel" style="margin-top:16px;">
+                <div class="svc-detection-header">
+                  <span class="mdi mdi-clipboard-check-outline"></span>
+                  <div>
+                    <strong>Eligible Services (Auto-Detected)</strong>
+                    <span class="svc-detection-hint">Based on age, sex, and civil status. Uncheck any you do not wish to enroll.</span>
+                  </div>
+                </div>
+                <div v-for="tbl in memberDetection.detectedTables.value" :key="tbl.table" class="svc-table-card" :class="{ 'svc-table-card--disabled': !memberDetection.selectedTables[tbl.table] }">
+                  <div class="svc-table-card-header" @click="memberDetection.toggleTable(tbl.table)">
+                    <input type="checkbox" :checked="memberDetection.selectedTables[tbl.table]" @click.stop="memberDetection.toggleTable(tbl.table)" class="svc-table-check" />
+                    <span class="mdi" :class="tbl.icon" :style="{ color: tbl.color, fontSize: '18px' }"></span>
+                    <strong>{{ tbl.label }}</strong>
+                    <span class="svc-table-badges">
+                      <span v-for="svc in tbl.services" :key="svc.key" class="svc-badge">{{ svc.label }}</span>
+                    </span>
+                  </div>
+                  <div v-if="memberDetection.selectedTables[tbl.table]" class="svc-table-card-body">
+                    <template v-if="memberDetection.getVisibleFields(tbl.table, { age: newMember.age, sex: newMember.sex }).length > 0">
+                      <div class="hs-form-row">
+                        <template v-for="field in memberDetection.getVisibleFields(tbl.table, { age: newMember.age, sex: newMember.sex })" :key="field.key">
+                          <div v-if="field.type === 'text'" class="hs-form-group">
+                            <label class="hs-label">{{ field.label }}</label>
+                            <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="text" class="hs-input" />
+                          </div>
+                          <div v-else-if="field.type === 'date'" class="hs-form-group">
+                            <label class="hs-label">{{ field.label }}</label>
+                            <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="date" class="hs-input" />
+                          </div>
+                          <div v-else-if="field.type === 'select'" class="hs-form-group">
+                            <label class="hs-label">{{ field.label }}</label>
+                            <select v-model="memberDetection.serviceFormData[tbl.table][field.key]" class="hs-select">
+                              <option value="">Select</option>
+                              <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+                            </select>
+                          </div>
+                          <div v-else-if="field.type === 'checkbox'" class="hs-form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
+                            <label class="hs-checkbox-label">
+                              <input type="checkbox" v-model="memberDetection.serviceFormData[tbl.table][field.key]" />
+                              {{ field.label }}
+                            </label>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
               <div class="hs-modal-footer hs-modal-footer--flat">
                 <button type="button" class="hs-btn hs-btn-secondary" @click="showAddMemberModal = false">Cancel</button>
-                <button type="submit" class="hs-btn hs-btn-primary"><span class="mdi mdi-plus"></span> Add Member</button>
+                <button type="submit" class="hs-btn hs-btn-primary">
+                  <span class="mdi mdi-plus"></span> Add Member
+                  <span v-if="memberDetection.detectedTables.value.length > 0" style="font-size:11px;opacity:0.85;margin-left:4px;">
+                    + {{ memberDetection.detectedTables.value.filter(t => memberDetection.selectedTables[t.table]).length }} service(s)
+                  </span>
+                </button>
               </div>
             </form>
           </div>
@@ -863,7 +1044,10 @@ const exportreportPdf = async () => {
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Age</label>
-                  <input v-model.number="editingMember.age" type="number" class="hs-input">
+                  <input v-model.number="editingMember.age" type="number" class="hs-input hs-input--readonly" readonly>
+                  <small v-if="editingMember.birthdate" class="hs-form-hint" style="color: var(--hs-success);">
+                    <span class="mdi mdi-check-circle"></span> Auto-calculated from birthdate
+                  </small>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Sex</label>
@@ -886,17 +1070,34 @@ const exportreportPdf = async () => {
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Education</label>
-                  <input v-model="editingMember.education" type="text" class="hs-input">
+                  <select v-model="editingMember.education" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Elementary">Elementary</option>
+                    <option value="High School">High School</option>
+                    <option value="College">College</option>
+                    <option value="Vocational">Vocational</option>
+                    <option value="None">None</option>
+                  </select>
                 </div>
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Religion</label>
-                  <input v-model="editingMember.religion" type="text" class="hs-input">
+                  <select v-model="editingMember.religion" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Catholic">Catholic</option>
+                    <option value="Islam">Islam</option>
+                    <option value="Protestant">Protestant</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Ethnicity</label>
-                  <input v-model="editingMember.ethnicity" type="text" class="hs-input">
+                  <select v-model="editingMember.ethnicity" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="IP">IP</option>
+                    <option value="Non-IP">Non-IP</option>
+                  </select>
                 </div>
               </div>
               <div class="hs-form-row">
@@ -915,21 +1116,41 @@ const exportreportPdf = async () => {
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Medical History</label>
-                  <input v-model="editingMember.medical_history" type="text" class="hs-input">
+                  <select v-model="editingMember.medical_history" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="None">None</option>
+                    <option value="HPN">Hypertension (HPN)</option>
+                    <option value="DM">Diabetes Mellitus (DM)</option>
+                    <option value="TB">Tuberculosis (TB)</option>
+                    <option value="O">Others</option>
+                  </select>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">FP Method Used</label>
-                  <input v-model="editingMember.fp_method_used" type="text" class="hs-input">
+                  <input v-model="editingMember.fp_method_used" type="text" class="hs-input" placeholder="e.g. Pills, IUD...">
                 </div>
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
                   <label class="hs-label">Water Source</label>
-                  <input v-model="editingMember.water_source" type="text" class="hs-input">
+                  <select v-model="editingMember.water_source" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Piped/Faucet">Piped/Faucet</option>
+                    <option value="Well">Well</option>
+                    <option value="Spring">Spring</option>
+                    <option value="Rain">Rain</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div class="hs-form-group">
                   <label class="hs-label">Toilet Facility</label>
-                  <input v-model="editingMember.toilet_facility" type="text" class="hs-input">
+                  <select v-model="editingMember.toilet_facility" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Water-sealed">Water-sealed</option>
+                    <option value="Open pit">Open pit</option>
+                    <option value="None">None</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
               </div>
               <div class="hs-modal-footer hs-modal-footer--flat">
@@ -1072,4 +1293,21 @@ const exportreportPdf = async () => {
 .members-toolbar .hs-search-box { flex: 1; max-width: 320px; }
 .member-action-btns { display: flex; gap: 4px; }
 .hs-modal-footer--flat { border-top: none; padding-top: 8px; }
+
+/* Service Detection Panel */
+.svc-detection-panel { margin: 16px 0; padding: 16px; background: linear-gradient(135deg, #f0f7ff 0%, #f5f0ff 100%); border-radius: 10px; border: 1px solid #d0e3ff; }
+.svc-detection-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; color: var(--hs-primary); }
+.svc-detection-header > .mdi { font-size: 20px; margin-top: 1px; }
+.svc-detection-header strong { display: block; font-size: 13px; margin-bottom: 2px; }
+.svc-detection-hint { display: block; font-size: 11px; color: var(--hs-gray-500); font-weight: 400; }
+.svc-table-card { background: var(--hs-white); border: 1px solid var(--hs-gray-100); border-radius: var(--hs-radius-lg); margin-bottom: 8px; overflow: hidden; transition: opacity 150ms ease, border-color 150ms ease; }
+.svc-table-card:last-child { margin-bottom: 0; }
+.svc-table-card--disabled { opacity: 0.55; border-color: var(--hs-gray-100); }
+.svc-table-card-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; user-select: none; transition: background 100ms ease; }
+.svc-table-card-header:hover { background: var(--hs-gray-50); }
+.svc-table-card-header strong { font-size: var(--hs-font-size-sm); color: var(--hs-gray-800); }
+.svc-table-check { width: 16px; height: 16px; cursor: pointer; accent-color: var(--hs-primary); flex-shrink: 0; }
+.svc-table-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.svc-badge { display: inline-block; padding: 2px 8px; background: var(--hs-primary-bg); color: var(--hs-primary); border-radius: 10px; font-size: 10px; font-weight: 500; white-space: nowrap; }
+.svc-table-card-body { padding: 8px 14px 14px; border-top: 1px solid var(--hs-gray-100); background: var(--hs-gray-50); }
 </style>

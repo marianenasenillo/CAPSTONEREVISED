@@ -644,6 +644,7 @@ const saveHousehold = async () => {
                     <label class="hs-label">Medical History</label>
                     <select v-model="medicalHistory" class="hs-select">
                       <option value="">Select</option>
+                      <option value="None">None</option>
                       <option value="HPN">Hypertension</option>
                       <option value="DM">Diabetes</option>
                       <option value="TB">Tuberculosis</option>

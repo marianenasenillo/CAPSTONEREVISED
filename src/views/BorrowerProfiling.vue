@@ -29,6 +29,7 @@ async function notifyRole(targetRole, { type, title, message, icon, color, link 
 const loading = ref(true)
 const activeTab = ref('borrowers') // 'borrowers' | 'medicine_log' | 'tool_log' | 'analytics'
 const userBarangay = ref('')
+const userFullName = ref('')
 
 const borrowers = ref([])
 const searchQuery = ref('')
@@ -100,6 +101,7 @@ async function loadData() {
 
     const { data: { user } } = await supabase.auth.getUser()
     userBarangay.value = user?.user_metadata?.barangay || ''
+    userFullName.value = user?.user_metadata?.full_name || ''
 
     const [borrowerData, medData, toolData, memberData] = await Promise.all([
       listBorrowerProfiles({ barangay: userBarangay.value }),
@@ -201,7 +203,7 @@ function openMedicineForm(borrower) {
     medicine_id: '',
     quantity: 1,
     purpose: '',
-    prescribed_by: '',
+    prescribed_by: userFullName.value || '',
   }
   showMedicineForm.value = true
 }

@@ -593,6 +593,112 @@ const toggleHead = (headId) => {
   else expandedHeadIds.value.push(headId)
 }
 
+// View Details modals
+const showHeadDetailModal = ref(false)
+const headDetailItem = ref(null)
+const showMemberDetailModal = ref(false)
+const memberDetailItem = ref(null)
+const memberDetailHead = ref(null)
+
+const openHeadDetail = (head) => {
+  headDetailItem.value = head
+  showHeadDetailModal.value = true
+}
+const openMemberDetail = (member, head) => {
+  memberDetailItem.value = member
+  memberDetailHead.value = head || null
+  showMemberDetailModal.value = true
+}
+const fmtDetailDate = (val) => {
+  if (!val) return '—'
+  return new Date(val).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+// Edit modals for directory
+const showEditHeadModal = ref(false)
+const editHeadForm = ref({})
+const showEditMemberModal = ref(false)
+const editMemberForm = ref({})
+const editMemberHeadRef = ref(null)
+
+const openEditHead = (head) => {
+  editHeadForm.value = { ...head }
+  showEditHeadModal.value = true
+}
+const openEditMember = (member, head) => {
+  editMemberForm.value = { ...member }
+  editMemberHeadRef.value = head || null
+  showEditMemberModal.value = true
+}
+
+// Auto-calculate age for edit head form
+watch(() => editHeadForm.value.birthdate, (val) => {
+  if (val && showEditHeadModal.value) {
+    const calc = calculateAge(val)
+    editHeadForm.value.age = calc !== null && calc >= 0 ? calc : editHeadForm.value.age
+  }
+})
+// Auto-calculate age for edit member form
+watch(() => editMemberForm.value.birthdate, (val) => {
+  if (val && showEditMemberModal.value) {
+    const calc = calculateAge(val)
+    editMemberForm.value.age = calc !== null && calc >= 0 ? calc : editMemberForm.value.age
+  }
+})
+
+const saveEditHead = async () => {
+  try {
+    if (!editHeadForm.value.firstname || !editHeadForm.value.lastname) {
+      toast.warning('First name and last name are required.')
+      return
+    }
+    const { head_id, created_at: _ca, is_archived: _ia, archived_at: _aa, ...updates } = editHeadForm.value
+    // Normalize sex
+    if (updates.sex === 'Male') updates.sex = 'M'
+    else if (updates.sex === 'Female') updates.sex = 'F'
+    if (updates.age !== '' && updates.age != null) updates.age = parseInt(updates.age)
+    else updates.age = null
+    if (!updates.birthdate) updates.birthdate = null
+    if (updates.no_of_families) updates.no_of_families = parseInt(updates.no_of_families)
+
+    const { error } = await supabase.from('household_heads').update(updates).eq('head_id', head_id)
+    if (error) throw error
+
+    toast.success('Household head updated.')
+    showEditHeadModal.value = false
+    await loadDirectory()
+  } catch (e) {
+    console.error(e)
+    toast.error('Error updating head: ' + (e.message || e))
+  }
+}
+
+const saveEditMember = async () => {
+  try {
+    if (!editMemberForm.value.firstname || !editMemberForm.value.lastname) {
+      toast.warning('First name and last name are required.')
+      return
+    }
+    const { member_id, created_at: _ca2, is_archived: _ia2, archived_at: _aa2, head_id: _hid, ...updates } = editMemberForm.value
+    // Normalize sex
+    if (updates.sex === 'Male') updates.sex = 'M'
+    else if (updates.sex === 'Female') updates.sex = 'F'
+    if (updates.age !== '' && updates.age != null) updates.age = parseInt(updates.age)
+    else updates.age = null
+    if (!updates.birthdate) updates.birthdate = null
+
+    const { error } = await supabase.from('household_members').update(updates).eq('member_id', member_id)
+    if (error) throw error
+
+    toast.success('Member updated.')
+    showEditMemberModal.value = false
+    await loadDirectory()
+  } catch (e) {
+    console.error(e)
+    toast.error('Error updating member: ' + (e.message || e))
+  }
+}
+
 watch(profilingTab, (val) => {
   if (val === 'directory' && directoryHeads.value.length === 0) {
     loadDirectory()
@@ -911,6 +1017,12 @@ const saveQuickAddRecord = async () => {
               <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(item, 'member', item._head.purok)" title="Quick Add Record">
                 <span class="mdi mdi-plus-circle-outline"></span> Add Record
               </button>
+              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(item, item._head)" title="Edit">
+                <span class="mdi mdi-pencil-outline"></span>
+              </button>
+              <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(item, item._head)" title="View Details">
+                <span class="mdi mdi-eye-outline"></span>
+              </button>
             </div>
           </div>
         </div>
@@ -933,6 +1045,12 @@ const saveQuickAddRecord = async () => {
               <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(head, 'head', head.purok)" title="Quick Add Record">
                 <span class="mdi mdi-plus-circle-outline"></span> Add Record
               </button>
+              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditHead(head)" title="Edit">
+                <span class="mdi mdi-pencil-outline"></span>
+              </button>
+              <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openHeadDetail(head)" title="View Details">
+                <span class="mdi mdi-eye-outline"></span>
+              </button>
             </div>
 
             <div v-if="expandedHeadIds.includes(head.head_id)" class="dir-members">
@@ -949,6 +1067,12 @@ const saveQuickAddRecord = async () => {
                 </div>
                 <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(member, 'member', head.purok)" title="Quick Add Record">
                   <span class="mdi mdi-plus-circle-outline"></span> Add Record
+                </button>
+                <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(member, head)" title="Edit">
+                  <span class="mdi mdi-pencil-outline"></span>
+                </button>
+                <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(member, head)" title="View Details">
+                  <span class="mdi mdi-eye-outline"></span>
                 </button>
               </div>
             </div>
@@ -1424,6 +1548,7 @@ const saveQuickAddRecord = async () => {
                       <label class="hs-label">Medical History</label>
                       <select v-model="medicalHistory" class="hs-select">
                         <option value="">Select</option>
+                        <option value="None">None</option>
                         <option value="HPN">Hypertension (HPN)</option>
                         <option value="DM">Diabetes Mellitus (DM)</option>
                         <option value="TB">Tuberculosis (TB)</option>
@@ -1737,6 +1862,471 @@ const saveQuickAddRecord = async () => {
               </form>
             </template>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Household Head Detail Modal -->
+    <div v-if="showHeadDetailModal && headDetailItem" class="hs-modal-overlay" @click.self="showHeadDetailModal = false">
+      <div class="hs-modal hs-modal-md">
+        <div class="hs-modal-header">
+          <h3>Household Head Details</h3>
+          <button class="hs-modal-close" @click="showHeadDetailModal = false">&times;</button>
+        </div>
+        <div class="hs-modal-body">
+          <div class="prof-detail-top">
+            <div class="prof-detail-avatar"><span class="mdi mdi-home-account"></span></div>
+            <div>
+              <h4 class="prof-detail-name">{{ headDetailItem.lastname }}, {{ headDetailItem.firstname }} {{ headDetailItem.middlename || '' }} {{ headDetailItem.suffix || '' }}</h4>
+              <span class="prof-detail-tag">Household Head</span>
+            </div>
+          </div>
+          <div class="prof-detail-grid">
+            <div class="prof-detail-field"><span class="prof-detail-label">Head ID</span><span class="prof-detail-value">{{ headDetailItem.head_id }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Barangay</span><span class="prof-detail-value">{{ headDetailItem.barangay || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Purok</span><span class="prof-detail-value">{{ headDetailItem.purok || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Sex</span><span class="prof-detail-value">{{ headDetailItem.sex === 'M' ? 'Male' : headDetailItem.sex === 'F' ? 'Female' : headDetailItem.sex || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Birthdate</span><span class="prof-detail-value">{{ fmtDetailDate(headDetailItem.birthdate) }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Age</span><span class="prof-detail-value">{{ headDetailItem.age ?? '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Civil Status</span><span class="prof-detail-value">{{ headDetailItem.civil_status || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Contact Number</span><span class="prof-detail-value">{{ headDetailItem.contact_number || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Occupation</span><span class="prof-detail-value">{{ headDetailItem.occupation || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">No. of Families</span><span class="prof-detail-value">{{ headDetailItem.no_of_families ?? '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Members</span><span class="prof-detail-value">{{ (directoryMembers[headDetailItem.head_id] || []).length }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Date Added</span><span class="prof-detail-value">{{ fmtDetailDate(headDetailItem.created_at) }}</span></div>
+          </div>
+        </div>
+        <div class="hs-modal-footer">
+          <button class="hs-btn hs-btn-secondary" @click="showHeadDetailModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Household Member Detail Modal -->
+    <div v-if="showMemberDetailModal && memberDetailItem" class="hs-modal-overlay" @click.self="showMemberDetailModal = false">
+      <div class="hs-modal hs-modal-md">
+        <div class="hs-modal-header">
+          <h3>Household Member Details</h3>
+          <button class="hs-modal-close" @click="showMemberDetailModal = false">&times;</button>
+        </div>
+        <div class="hs-modal-body">
+          <div class="prof-detail-top">
+            <div class="prof-detail-avatar prof-detail-avatar--member"><span class="mdi mdi-account"></span></div>
+            <div>
+              <h4 class="prof-detail-name">{{ memberDetailItem.lastname }}, {{ memberDetailItem.firstname }} {{ memberDetailItem.middlename || '' }} {{ memberDetailItem.suffix || '' }}</h4>
+              <span class="prof-detail-tag prof-detail-tag--member">{{ memberDetailItem.relationship || 'Member' }}</span>
+            </div>
+          </div>
+          <div v-if="memberDetailHead" class="prof-detail-head-ref">
+            <span class="mdi mdi-home-account"></span>
+            <span>Under: <strong>{{ memberDetailHead.lastname }}, {{ memberDetailHead.firstname }}</strong> ({{ memberDetailHead.purok || 'No Purok' }})</span>
+          </div>
+          <div class="prof-detail-section-title">Personal Information</div>
+          <div class="prof-detail-grid">
+            <div class="prof-detail-field"><span class="prof-detail-label">Member ID</span><span class="prof-detail-value">{{ memberDetailItem.member_id }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Barangay</span><span class="prof-detail-value">{{ memberDetailItem.barangay || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Sex</span><span class="prof-detail-value">{{ memberDetailItem.sex === 'M' ? 'Male' : memberDetailItem.sex === 'F' ? 'Female' : memberDetailItem.sex || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Birthdate</span><span class="prof-detail-value">{{ fmtDetailDate(memberDetailItem.birthdate) }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Age</span><span class="prof-detail-value">{{ memberDetailItem.age ?? '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Civil Status</span><span class="prof-detail-value">{{ memberDetailItem.civil_status || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Education</span><span class="prof-detail-value">{{ memberDetailItem.education || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Religion</span><span class="prof-detail-value">{{ memberDetailItem.religion || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Ethnicity</span><span class="prof-detail-value">{{ memberDetailItem.ethnicity || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Occupation</span><span class="prof-detail-value">{{ memberDetailItem.occupation || '—' }}</span></div>
+          </div>
+          <div class="prof-detail-section-title">Health & Benefits</div>
+          <div class="prof-detail-grid">
+            <div class="prof-detail-field"><span class="prof-detail-label">4Ps Member</span><span class="prof-detail-value">{{ memberDetailItem.is_4ps_member ? 'Yes' : 'No' }}</span></div>
+            <div v-if="memberDetailItem.is_4ps_member" class="prof-detail-field"><span class="prof-detail-label">4Ps Household ID</span><span class="prof-detail-value">{{ memberDetailItem.household_id_4ps || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">PhilHealth ID</span><span class="prof-detail-value">{{ memberDetailItem.philhealth_id || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Membership Type</span><span class="prof-detail-value">{{ memberDetailItem.membership_type || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">PhilHealth Category</span><span class="prof-detail-value">{{ memberDetailItem.philhealth_category || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Medical History</span><span class="prof-detail-value">{{ memberDetailItem.medical_history || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Age Group</span><span class="prof-detail-value">{{ memberDetailItem.age_group || '—' }}</span></div>
+          </div>
+          <div class="prof-detail-section-title">Reproductive & Household</div>
+          <div class="prof-detail-grid">
+            <div class="prof-detail-field"><span class="prof-detail-label">LMP</span><span class="prof-detail-value">{{ fmtDetailDate(memberDetailItem.lmp) }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Using FP Method</span><span class="prof-detail-value">{{ memberDetailItem.using_fp_method ? 'Yes' : 'No' }}</span></div>
+            <div v-if="memberDetailItem.using_fp_method" class="prof-detail-field"><span class="prof-detail-label">FP Method</span><span class="prof-detail-value">{{ memberDetailItem.fp_method_used || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">FP Status</span><span class="prof-detail-value">{{ memberDetailItem.fp_status || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Water Source</span><span class="prof-detail-value">{{ memberDetailItem.water_source || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Toilet Facility</span><span class="prof-detail-value">{{ memberDetailItem.toilet_facility || '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Date of Visit</span><span class="prof-detail-value">{{ fmtDetailDate(memberDetailItem.date_visit) }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Date Added</span><span class="prof-detail-value">{{ fmtDetailDate(memberDetailItem.created_at) }}</span></div>
+          </div>
+        </div>
+        <div class="hs-modal-footer">
+          <button class="hs-btn hs-btn-secondary" @click="showMemberDetailModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Household Head Modal -->
+    <div v-if="showEditHeadModal" class="hs-modal-overlay" @click.self="showEditHeadModal = false">
+      <div class="hs-modal hs-modal-md">
+        <div class="hs-modal-header">
+          <h3>Edit Household Head</h3>
+          <button class="hs-modal-close" @click="showEditHeadModal = false">&times;</button>
+        </div>
+        <div class="hs-modal-body hs-modal-body--scroll">
+          <form @submit.prevent="saveEditHead">
+            <div class="form-section">
+              <div class="form-section-label">
+                <span class="mdi mdi-map-marker-outline form-section-icon form-section-icon--info"></span>
+                <div><strong>Location</strong><span>Barangay and purok assignment</span></div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Barangay</label>
+                  <input v-model="editHeadForm.barangay" type="text" class="hs-input hs-input--readonly" readonly />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Purok</label>
+                  <select v-model="editHeadForm.purok" class="hs-select">
+                    <option value="">Select Purok</option>
+                    <option value="Purok 1">Purok 1</option>
+                    <option value="Purok 2">Purok 2</option>
+                    <option value="Purok 3">Purok 3</option>
+                    <option value="Purok 4">Purok 4</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-section-label">
+                <span class="mdi mdi-account-outline form-section-icon form-section-icon--primary"></span>
+                <div><strong>Personal Information</strong><span>Full name, birthdate, sex, and civil status</span></div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Last Name <span class="hs-text-danger">*</span></label>
+                  <input v-model="editHeadForm.lastname" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">First Name <span class="hs-text-danger">*</span></label>
+                  <input v-model="editHeadForm.firstname" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Middle Name</label>
+                  <input v-model="editHeadForm.middlename" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Suffix</label>
+                  <input v-model="editHeadForm.suffix" type="text" class="hs-input" placeholder="Jr, Sr, III..." />
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Birthdate</label>
+                  <input v-model="editHeadForm.birthdate" type="date" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Age</label>
+                  <input v-model.number="editHeadForm.age" type="number" class="hs-input hs-input--readonly" min="0" readonly />
+                  <span class="hs-form-hint"><span class="mdi mdi-auto-fix"></span> Auto-calculated</span>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Sex</label>
+                  <select v-model="editHeadForm.sex" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Civil Status</label>
+                  <select v-model="editHeadForm.civil_status" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Separated">Separated</option>
+                    <option value="Live-in">Live-in</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-section-label">
+                <span class="mdi mdi-phone-outline form-section-icon form-section-icon--success"></span>
+                <div><strong>Contact &amp; Household Details</strong><span>Phone, occupation, and family count</span></div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Contact Number</label>
+                  <input v-model="editHeadForm.contact_number" type="text" class="hs-input" placeholder="e.g. 09xxxxxxxxx" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Occupation</label>
+                  <input v-model="editHeadForm.occupation" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">No. of Families</label>
+                  <input v-model="editHeadForm.no_of_families" type="number" class="hs-input" min="0" />
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-modal-footer hs-modal-footer--flat">
+              <button type="button" class="hs-btn hs-btn-secondary" @click="showEditHeadModal = false">
+                <span class="mdi mdi-close"></span> Cancel
+              </button>
+              <button type="submit" class="hs-btn hs-btn-primary">
+                <span class="mdi mdi-content-save-outline"></span> Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Household Member Modal -->
+    <div v-if="showEditMemberModal" class="hs-modal-overlay" @click.self="showEditMemberModal = false">
+      <div class="hs-modal hs-modal-lg">
+        <div class="hs-modal-header">
+          <h3>Edit Household Member</h3>
+          <button class="hs-modal-close" @click="showEditMemberModal = false">&times;</button>
+        </div>
+        <div class="hs-modal-body hs-modal-body--scroll">
+          <div v-if="editMemberHeadRef" class="prof-detail-head-ref" style="margin-bottom: 16px;">
+            <span class="mdi mdi-home-account"></span>
+            <span>Under: <strong>{{ editMemberHeadRef.lastname }}, {{ editMemberHeadRef.firstname }}</strong> ({{ editMemberHeadRef.purok || 'No Purok' }})</span>
+          </div>
+          <form @submit.prevent="saveEditMember">
+            <div class="form-section">
+              <div class="form-section-label">
+                <span class="mdi mdi-account-outline form-section-icon form-section-icon--primary"></span>
+                <div><strong>Personal Information</strong><span>Name, birthdate, sex, and demographics</span></div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Last Name <span class="hs-text-danger">*</span></label>
+                  <input v-model="editMemberForm.lastname" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">First Name <span class="hs-text-danger">*</span></label>
+                  <input v-model="editMemberForm.firstname" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Middle Name</label>
+                  <input v-model="editMemberForm.middlename" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Suffix</label>
+                  <input v-model="editMemberForm.suffix" type="text" class="hs-input" placeholder="Jr, Sr, III..." />
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Relationship to Head</label>
+                  <select v-model="editMemberForm.relationship" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Son">Son</option>
+                    <option value="Daughter">Daughter</option>
+                    <option value="Mother">Mother</option>
+                    <option value="Father">Father</option>
+                    <option value="Brother">Brother</option>
+                    <option value="Sister">Sister</option>
+                    <option value="Grandchild">Grandchild</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Birthdate</label>
+                  <input v-model="editMemberForm.birthdate" type="date" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Age</label>
+                  <input v-model.number="editMemberForm.age" type="number" class="hs-input hs-input--readonly" min="0" readonly />
+                  <span class="hs-form-hint"><span class="mdi mdi-auto-fix"></span> Auto-calculated</span>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Sex</label>
+                  <select v-model="editMemberForm.sex" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="M">Male</option>
+                    <option value="F">Female</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Civil Status</label>
+                  <select v-model="editMemberForm.civil_status" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Separated">Separated</option>
+                    <option value="Live-in">Live-in</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Education</label>
+                  <select v-model="editMemberForm.education" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Elementary">Elementary</option>
+                    <option value="High School">High School</option>
+                    <option value="College">College</option>
+                    <option value="Vocational">Vocational</option>
+                    <option value="None">None</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Religion</label>
+                  <select v-model="editMemberForm.religion" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Catholic">Catholic</option>
+                    <option value="Islam">Islam</option>
+                    <option value="Protestant">Protestant</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Ethnicity</label>
+                  <select v-model="editMemberForm.ethnicity" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="IP">IP</option>
+                    <option value="Non-IP">Non-IP</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Occupation</label>
+                  <input v-model="editMemberForm.occupation" type="text" class="hs-input" />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-section-label">
+                <span class="mdi mdi-shield-check-outline form-section-icon form-section-icon--info"></span>
+                <div><strong>Health &amp; Benefits</strong><span>4Ps, PhilHealth, medical history</span></div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">4Ps Member</label>
+                  <select v-model="editMemberForm.is_4ps_member" class="hs-select">
+                    <option :value="false">No</option>
+                    <option :value="true">Yes</option>
+                  </select>
+                </div>
+                <div v-if="editMemberForm.is_4ps_member" class="hs-form-group">
+                  <label class="hs-label">4Ps Household ID</label>
+                  <input v-model="editMemberForm.household_id_4ps" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">PhilHealth ID</label>
+                  <input v-model="editMemberForm.philhealth_id" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Membership Type</label>
+                  <select v-model="editMemberForm.membership_type" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Member">Member</option>
+                    <option value="Dependent">Dependent</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">PhilHealth Category</label>
+                  <select v-model="editMemberForm.philhealth_category" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Employed">Employed</option>
+                    <option value="Self-employed">Self-employed</option>
+                    <option value="Voluntary">Voluntary</option>
+                    <option value="Sponsored">Sponsored</option>
+                    <option value="Lifetime">Lifetime</option>
+                    <option value="Senior Citizen">Senior Citizen</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Medical History</label>
+                  <select v-model="editMemberForm.medical_history" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="None">None</option>
+                    <option value="HPN">HPN</option>
+                    <option value="DM">DM</option>
+                    <option value="TB">TB</option>
+                    <option value="O">Other</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <div class="form-section-label">
+                <span class="mdi mdi-heart-outline form-section-icon form-section-icon--danger"></span>
+                <div><strong>Reproductive &amp; Household</strong><span>LMP, FP, water and sanitation</span></div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">LMP</label>
+                  <input v-model="editMemberForm.lmp" type="date" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Using FP Method</label>
+                  <select v-model="editMemberForm.using_fp_method" class="hs-select">
+                    <option :value="false">No</option>
+                    <option :value="true">Yes</option>
+                  </select>
+                </div>
+                <div v-if="editMemberForm.using_fp_method" class="hs-form-group">
+                  <label class="hs-label">FP Method Used</label>
+                  <input v-model="editMemberForm.fp_method_used" type="text" class="hs-input" />
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">FP Status</label>
+                  <select v-model="editMemberForm.fp_status" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="New Acceptor">New Acceptor</option>
+                    <option value="Current User">Current User</option>
+                    <option value="Dropout">Dropout</option>
+                    <option value="Others">Others</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hs-form-row">
+                <div class="hs-form-group">
+                  <label class="hs-label">Water Source</label>
+                  <select v-model="editMemberForm.water_source" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Piped">Piped</option>
+                    <option value="Faucet">Faucet</option>
+                    <option value="Well">Well</option>
+                    <option value="Spring">Spring</option>
+                    <option value="Rain">Rain</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="hs-form-group">
+                  <label class="hs-label">Toilet Facility</label>
+                  <select v-model="editMemberForm.toilet_facility" class="hs-select">
+                    <option value="">Select</option>
+                    <option value="Water-sealed">Water-sealed</option>
+                    <option value="Open pit">Open pit</option>
+                    <option value="None">None</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-modal-footer hs-modal-footer--flat">
+              <button type="button" class="hs-btn hs-btn-secondary" @click="showEditMemberModal = false">
+                <span class="mdi mdi-close"></span> Cancel
+              </button>
+              <button type="submit" class="hs-btn hs-btn-primary">
+                <span class="mdi mdi-content-save-outline"></span> Save Changes
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -2150,5 +2740,36 @@ const saveQuickAddRecord = async () => {
   .inv-toolbar { flex-direction: column; align-items: stretch; }
   .svc-table-card-header { flex-wrap: wrap; }
   .svc-table-badges { margin-left: 0; margin-top: 4px; }
+  .prof-detail-grid { grid-template-columns: 1fr; }
 }
+
+/* View Details Modal */
+.prof-detail-top { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.prof-detail-avatar {
+  width: 48px; height: 48px; border-radius: var(--hs-radius-lg);
+  background: var(--hs-primary-bg); color: var(--hs-primary);
+  display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
+}
+.prof-detail-avatar--member { background: var(--hs-info-bg); color: var(--hs-info); }
+.prof-detail-name { font-size: var(--hs-font-size-lg); font-weight: 600; color: var(--hs-gray-800); margin: 0 0 4px 0; }
+.prof-detail-tag {
+  display: inline-block; font-size: 10px; font-weight: 500; padding: 2px 8px;
+  border-radius: 10px; background: var(--hs-primary-bg); color: var(--hs-primary);
+}
+.prof-detail-tag--member { background: var(--hs-info-bg); color: var(--hs-info); }
+.prof-detail-head-ref {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 16px;
+  background: var(--hs-gray-50); border-radius: var(--hs-radius-md);
+  font-size: var(--hs-font-size-sm); color: var(--hs-gray-600);
+}
+.prof-detail-head-ref .mdi { font-size: 16px; color: var(--hs-primary); }
+.prof-detail-section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--hs-gray-400); margin: 18px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--hs-gray-100);
+}
+.prof-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.prof-detail-field { display: flex; flex-direction: column; gap: 2px; }
+.prof-detail-label { font-size: 10px; font-weight: 500; color: var(--hs-gray-400); text-transform: uppercase; letter-spacing: 0.04em; }
+.prof-detail-value { font-size: var(--hs-font-size-sm); color: var(--hs-gray-700); font-weight: 500; }
 </style>

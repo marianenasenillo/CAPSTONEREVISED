@@ -273,7 +273,7 @@ const exportreportPdf = async () => {
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Child Care / Records</div>
         <h1>Vitamin A Supplementation Records</h1>
-        <p class="hs-module-desc">View, edit, and manage childcare immunization and health records.</p>
+        <p class="hs-module-desc">View, edit, and manage childcare health records.</p>
       </div>
 
       <div class="hs-toolbar">

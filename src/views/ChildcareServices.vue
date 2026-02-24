@@ -110,7 +110,7 @@ onMounted(async () => {
           <span class="current">Child Care</span>
         </div>
         <h1>Child Care Services</h1>
-        <p class="hs-module-desc">Track immunization, nutrition, and health monitoring for children.</p>
+        <p class="hs-module-desc">Track nutrition and health monitoring for children.</p>
         <p>Safeguard the health and development of children in the community</p>
       </div>
 

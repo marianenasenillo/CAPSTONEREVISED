@@ -1123,6 +1123,49 @@ a:hover {
   justify-content: space-between;
   align-items: center;
 }
+.notif-search-wrap {
+  position: relative;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hs-border);
+}
+.notif-search-icon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: var(--hs-gray-400);
+  pointer-events: none;
+}
+.notif-search-input {
+  width: 100%;
+  padding: 7px 30px 7px 30px;
+  border: 1px solid var(--hs-gray-200);
+  border-radius: var(--hs-radius-md);
+  font-size: 12px;
+  color: var(--hs-gray-700);
+  background: var(--hs-gray-50);
+  outline: none;
+  transition: border-color var(--hs-transition-fast);
+}
+.notif-search-input::placeholder { color: var(--hs-gray-400); }
+.notif-search-input:focus { border-color: var(--hs-primary); background: var(--hs-white); }
+.notif-search-clear {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--hs-gray-400);
+  font-size: 14px;
+  padding: 2px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+.notif-search-clear:hover { color: var(--hs-gray-600); }
 .hs-notification-item {
   display: flex;
   align-items: flex-start;
