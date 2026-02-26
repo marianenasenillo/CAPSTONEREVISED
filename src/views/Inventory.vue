@@ -267,8 +267,23 @@ async function notifyRole(targetRole, { type, title, message, icon, color, link 
   } catch (e) { console.error('Failed to send notification', e) }
 }
 
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
-const fmtDateTime = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const fmtDate = (d) => {
+  if (!d) return '—'
+  const [datePart] = String(d).split('T')
+  const [y, m, day] = datePart.split('-')
+  return `${MONTHS[parseInt(m) - 1]} ${parseInt(day)}, ${y}`
+}
+const fmtDateTime = (d) => {
+  if (!d) return '—'
+  const [datePart, timePart = '00:00'] = String(d).split('T')
+  const [y, m, day] = datePart.split('-')
+  const [hStr, minStr] = timePart.split(':')
+  const h = parseInt(hStr)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 || 12
+  return `${MONTHS[parseInt(m) - 1]} ${parseInt(day)}, ${y}, ${h12}:${minStr} ${ampm}`
+}
 const isExpiringSoon = (exp) => { if (!exp) return false; const diff = (new Date(exp) - new Date()) / 864e5; return diff > 0 && diff <= 90 }
 const isExpired = (exp) => exp ? new Date(exp) < new Date() : false
 
