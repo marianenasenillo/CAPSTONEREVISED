@@ -115,7 +115,7 @@ const handleLogin = async () => {
           </p>
 
           <div class="public-link-row">
-            <router-link to="/public" class="auth-alt-link">
+            <router-link to="/" class="auth-alt-link">
               <span class="mdi mdi-earth"></span> View Public Dashboard
             </router-link>
           </div>
