@@ -322,7 +322,7 @@ onMounted(async () => {
           </button>
         </div>
 
-        <!-- Borrower Cards -->
+        <!-- Borrower Table -->
         <div v-if="filteredBorrowers.length === 0" class="hs-empty-state" style="padding: 60px 0;">
           <span class="mdi mdi-account-off-outline" style="font-size: 48px; color: var(--hs-gray-300);"></span>
           <p>No borrower profiles found</p>
@@ -331,30 +331,41 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div v-else class="bp-grid">
-          <div v-for="b in paginatedBorrowers" :key="b.borrower_id" class="bp-card">
-            <div class="bp-card-header">
-              <div class="bp-avatar">
-                <span class="mdi mdi-account"></span>
-              </div>
-              <div class="bp-card-info">
-                <div class="bp-card-name">{{ b.lastname }}, {{ b.firstname }} {{ b.middlename }} {{ b.suffix }}</div>
-                <div class="bp-card-meta">
-                  <span class="mdi mdi-map-marker"></span> {{ b.purok || 'N/A' }}
-                </div>
-              </div>
-            </div>
-            <div class="bp-card-actions">
-              <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openBorrowerDetail(b)" title="View Details">
-                <span class="mdi mdi-eye"></span> View
-              </button>
-              <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openMedicineForm(b)" title="Provide Medicine">
-                <span class="mdi mdi-pill"></span> Medicine
-              </button>
-              <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openToolForm(b)" title="Borrow Tool">
-                <span class="mdi mdi-wrench"></span> Borrow
-              </button>
-            </div>
+        <div v-else class="hs-card hs-card--flush">
+          <div class="hs-table-scroll">
+            <table class="hs-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Purok</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="b in paginatedBorrowers" :key="b.borrower_id">
+                  <td>
+                    <div class="bp-table-name">
+                      <div class="bp-avatar-sm"><span class="mdi mdi-account"></span></div>
+                      <strong>{{ b.lastname }}, {{ b.firstname }} {{ b.middlename }} {{ b.suffix }}</strong>
+                    </div>
+                  </td>
+                  <td>{{ b.purok || 'N/A' }}</td>
+                  <td>
+                    <div class="bp-table-actions">
+                      <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openBorrowerDetail(b)" title="View Details">
+                        <span class="mdi mdi-eye"></span> View
+                      </button>
+                      <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openMedicineForm(b)" title="Provide Medicine">
+                        <span class="mdi mdi-pill"></span> Medicine
+                      </button>
+                      <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openToolForm(b)" title="Borrow Tool">
+                        <span class="mdi mdi-wrench"></span> Borrow
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -415,54 +426,97 @@ onMounted(async () => {
 
       <!-- ANALYTICS TAB -->
       <div v-if="activeTab === 'analytics'" class="bp-analytics">
+        <!-- Summary Stats -->
+        <div class="bp-analytics-summary">
+          <div class="bp-summary-card">
+            <div class="bp-summary-icon bp-summary-icon--primary"><span class="mdi mdi-account-group"></span></div>
+            <div class="bp-summary-info">
+              <div class="bp-summary-value">{{ borrowers.length }}</div>
+              <div class="bp-summary-label">Total Borrowers</div>
+            </div>
+          </div>
+          <div class="bp-summary-card">
+            <div class="bp-summary-icon bp-summary-icon--success"><span class="mdi mdi-pill"></span></div>
+            <div class="bp-summary-info">
+              <div class="bp-summary-value">{{ topMedicines.reduce((s, m) => s + m.total_quantity, 0) }}</div>
+              <div class="bp-summary-label">Medicine Provided</div>
+            </div>
+          </div>
+          <div class="bp-summary-card">
+            <div class="bp-summary-icon bp-summary-icon--info"><span class="mdi mdi-wrench"></span></div>
+            <div class="bp-summary-info">
+              <div class="bp-summary-value">{{ topTools.reduce((s, t) => s + t.total_quantity, 0) }}</div>
+              <div class="bp-summary-label">Tools Borrowed</div>
+            </div>
+          </div>
+          <div class="bp-summary-card">
+            <div class="bp-summary-icon bp-summary-icon--warning"><span class="mdi mdi-swap-horizontal"></span></div>
+            <div class="bp-summary-info">
+              <div class="bp-summary-value">{{ activeBorrows.length }}</div>
+              <div class="bp-summary-label">Active Borrows</div>
+            </div>
+          </div>
+        </div>
+
         <div class="bp-analytics-grid">
           <!-- Most Requested Medicine -->
-          <div class="hs-card" style="padding: 24px;">
-            <h3 class="hs-card-title"><span class="mdi mdi-pill"></span> Most Requested Medicines</h3>
+          <div class="bp-analytics-card">
+            <div class="bp-analytics-card-header">
+              <span class="bp-analytics-card-icon bp-analytics-card-icon--success"><span class="mdi mdi-pill"></span></span>
+              <h3>Most Requested Medicines</h3>
+            </div>
             <div v-if="topMedicines.length === 0" class="hs-empty-state" style="padding: 30px;">
               <p>No medicine transaction data yet</p>
             </div>
             <div v-else class="bp-rank-list">
               <div v-for="(med, idx) in topMedicines" :key="med.medicine_id" class="bp-rank-item">
-                <span class="bp-rank-num">{{ idx + 1 }}</span>
+                <span class="bp-rank-num" :class="{ 'bp-rank-num--gold': idx === 0, 'bp-rank-num--silver': idx === 1, 'bp-rank-num--bronze': idx === 2 }">{{ idx + 1 }}</span>
                 <div class="bp-rank-info">
                   <div class="bp-rank-name">{{ med.medicine_name }}</div>
                   <div class="bp-rank-meta">{{ med.request_count }} requests &middot; {{ med.total_quantity }} total provided</div>
                 </div>
                 <div class="bp-rank-bar-wrap">
-                  <div class="bp-rank-bar" :style="{ width: (topMedicines[0].total_quantity > 0 ? (med.total_quantity / topMedicines[0].total_quantity) * 100 : 0) + '%', background: '#4CAF50' }"></div>
+                  <div class="bp-rank-bar" :style="{ width: (topMedicines[0].total_quantity > 0 ? (med.total_quantity / topMedicines[0].total_quantity) * 100 : 0) + '%', background: 'var(--hs-success)' }"></div>
                 </div>
+                <span class="bp-rank-qty">{{ med.total_quantity }}</span>
               </div>
             </div>
           </div>
 
           <!-- Most Borrowed Tools -->
-          <div class="hs-card" style="padding: 24px;">
-            <h3 class="hs-card-title"><span class="mdi mdi-wrench"></span> Most Borrowed Tools</h3>
+          <div class="bp-analytics-card">
+            <div class="bp-analytics-card-header">
+              <span class="bp-analytics-card-icon bp-analytics-card-icon--info"><span class="mdi mdi-wrench"></span></span>
+              <h3>Most Borrowed Tools</h3>
+            </div>
             <div v-if="topTools.length === 0" class="hs-empty-state" style="padding: 30px;">
               <p>No tool borrow data yet</p>
             </div>
             <div v-else class="bp-rank-list">
               <div v-for="(tool, idx) in topTools" :key="tool.tool_id" class="bp-rank-item">
-                <span class="bp-rank-num">{{ idx + 1 }}</span>
+                <span class="bp-rank-num" :class="{ 'bp-rank-num--gold': idx === 0, 'bp-rank-num--silver': idx === 1, 'bp-rank-num--bronze': idx === 2 }">{{ idx + 1 }}</span>
                 <div class="bp-rank-info">
                   <div class="bp-rank-name">{{ tool.tool_name }}</div>
                   <div class="bp-rank-meta">{{ tool.borrow_count }} borrows &middot; {{ tool.total_quantity }} total units</div>
                 </div>
                 <div class="bp-rank-bar-wrap">
-                  <div class="bp-rank-bar" :style="{ width: (topTools[0].total_quantity > 0 ? (tool.total_quantity / topTools[0].total_quantity) * 100 : 0) + '%', background: '#2196F3' }"></div>
+                  <div class="bp-rank-bar" :style="{ width: (topTools[0].total_quantity > 0 ? (tool.total_quantity / topTools[0].total_quantity) * 100 : 0) + '%', background: 'var(--hs-info)' }"></div>
                 </div>
+                <span class="bp-rank-qty">{{ tool.total_quantity }}</span>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Monthly Trends -->
-        <div class="hs-card" style="margin-top: 20px; padding: 24px;">
-          <h3 class="hs-card-title"><span class="mdi mdi-chart-timeline-variant"></span> Monthly Usage Trends</h3>
+        <div class="bp-analytics-card" style="margin-top: 20px;">
+          <div class="bp-analytics-card-header">
+            <span class="bp-analytics-card-icon bp-analytics-card-icon--primary"><span class="mdi mdi-chart-timeline-variant"></span></span>
+            <h3>Monthly Usage Trends</h3>
+          </div>
           <div class="bp-trends-grid">
             <div>
-              <h4>Medicine Requests</h4>
+              <h4><span class="mdi mdi-pill" style="color: var(--hs-success); margin-right: 4px;"></span> Medicine Requests</h4>
               <div v-if="monthlyTrends.medicine.length === 0" class="bp-trend-empty">No data yet</div>
               <div v-else class="bp-trend-list">
                 <div v-for="m in monthlyTrends.medicine" :key="m.month" class="bp-trend-item">
@@ -470,7 +524,7 @@ onMounted(async () => {
                   <div class="bp-trend-bar-wrap">
                     <div
                       class="bp-trend-bar"
-                      :style="{ width: (monthlyTrends.medicine[0].total_quantity > 0 ? (m.total_quantity / Math.max(...monthlyTrends.medicine.map(x => x.total_quantity))) * 100 : 0) + '%', background: '#4CAF50' }"
+                      :style="{ width: (monthlyTrends.medicine[0].total_quantity > 0 ? (m.total_quantity / Math.max(...monthlyTrends.medicine.map(x => x.total_quantity))) * 100 : 0) + '%', background: 'var(--hs-success)' }"
                     ></div>
                   </div>
                   <span class="bp-trend-count">{{ m.total_quantity }}</span>
@@ -478,7 +532,7 @@ onMounted(async () => {
               </div>
             </div>
             <div>
-              <h4>Tool Borrows</h4>
+              <h4><span class="mdi mdi-wrench" style="color: var(--hs-info); margin-right: 4px;"></span> Tool Borrows</h4>
               <div v-if="monthlyTrends.tools.length === 0" class="bp-trend-empty">No data yet</div>
               <div v-else class="bp-trend-list">
                 <div v-for="t in monthlyTrends.tools" :key="t.month" class="bp-trend-item">
@@ -486,7 +540,7 @@ onMounted(async () => {
                   <div class="bp-trend-bar-wrap">
                     <div
                       class="bp-trend-bar"
-                      :style="{ width: (monthlyTrends.tools[0].total_quantity > 0 ? (t.total_quantity / Math.max(...monthlyTrends.tools.map(x => x.total_quantity))) * 100 : 0) + '%', background: '#2196F3' }"
+                      :style="{ width: (monthlyTrends.tools[0].total_quantity > 0 ? (t.total_quantity / Math.max(...monthlyTrends.tools.map(x => x.total_quantity))) * 100 : 0) + '%', background: 'var(--hs-info)' }"
                     ></div>
                   </div>
                   <span class="bp-trend-count">{{ t.total_quantity }}</span>
@@ -700,33 +754,14 @@ onMounted(async () => {
 
 <style scoped>
 /* Borrower Profiling Styles */
-.bp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.bp-card {
-  background: var(--hs-white);
-  border-radius: var(--hs-radius-lg);
-  border: 1px solid var(--hs-border);
-  padding: 16px;
-  transition: box-shadow 0.2s;
-}
-.bp-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.bp-card-header {
+.bp-table-name {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
 }
-.bp-avatar {
-  width: 44px;
-  height: 44px;
+.bp-avatar-sm {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--hs-primary-bg, #e3f2fd);
   display: flex;
@@ -734,30 +769,19 @@ onMounted(async () => {
   justify-content: center;
   flex-shrink: 0;
 }
-.bp-avatar .mdi {
-  font-size: 22px;
+.bp-avatar-sm .mdi {
+  font-size: 16px;
   color: var(--hs-primary);
 }
-.bp-card-name {
-  font-weight: 600;
-  font-size: var(--hs-font-size-base);
-  color: var(--hs-gray-900);
-}
-.bp-card-meta {
-  font-size: var(--hs-font-size-xs);
-  color: var(--hs-gray-500);
+.bp-table-actions {
   display: flex;
-  align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
-.bp-card-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  border-top: 1px solid var(--hs-border);
-  padding-top: 12px;
-}
+.hs-card--flush { overflow: hidden; min-width: 0; max-width: 100%; }
+.hs-card--flush .hs-table-scroll { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 340px); }
+.hs-card--flush .hs-table { min-width: 500px; table-layout: auto; }
 
 /* Add borrower */
 .bp-add-section h3 {
@@ -851,6 +875,78 @@ onMounted(async () => {
 }
 
 /* Analytics */
+.bp-analytics-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.bp-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--hs-white);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+}
+.bp-summary-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--hs-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.bp-summary-icon--primary { background: var(--hs-primary-bg); color: var(--hs-primary); }
+.bp-summary-icon--success { background: var(--hs-success-bg); color: var(--hs-success); }
+.bp-summary-icon--info { background: var(--hs-info-bg); color: var(--hs-info); }
+.bp-summary-icon--warning { background: var(--hs-warning-bg); color: var(--hs-warning); }
+.bp-summary-value {
+  font-size: var(--hs-font-size-xl);
+  font-weight: 700;
+  color: var(--hs-gray-800);
+  line-height: 1;
+}
+.bp-summary-label {
+  font-size: var(--hs-font-size-xs);
+  color: var(--hs-gray-500);
+  margin-top: 2px;
+}
+
+.bp-analytics-card {
+  background: var(--hs-white);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-lg);
+  padding: 24px;
+}
+.bp-analytics-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.bp-analytics-card-header h3 {
+  font-size: var(--hs-font-size-base);
+  font-weight: 600;
+  color: var(--hs-gray-800);
+  margin: 0;
+}
+.bp-analytics-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--hs-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.bp-analytics-card-icon--success { background: var(--hs-success-bg); color: var(--hs-success); }
+.bp-analytics-card-icon--info { background: var(--hs-info-bg); color: var(--hs-info); }
+.bp-analytics-card-icon--primary { background: var(--hs-primary-bg); color: var(--hs-primary); }
 .bp-analytics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -878,6 +974,16 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--hs-gray-600);
   flex-shrink: 0;
+}
+.bp-rank-num--gold { background: #FFF8E1; color: #F9A825; }
+.bp-rank-num--silver { background: #ECEFF1; color: #78909C; }
+.bp-rank-num--bronze { background: #FBE9E7; color: #BF360C; }
+.bp-rank-qty {
+  font-size: var(--hs-font-size-sm);
+  font-weight: 700;
+  color: var(--hs-gray-700);
+  min-width: 32px;
+  text-align: right;
 }
 .bp-rank-info {
   flex: 1;
@@ -965,11 +1071,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  .bp-grid {
-    grid-template-columns: 1fr;
-  }
   .bp-analytics-grid {
     grid-template-columns: 1fr;
+  }
+  .bp-analytics-summary {
+    grid-template-columns: repeat(2, 1fr);
   }
   .bp-trends-grid {
     grid-template-columns: 1fr;

@@ -213,23 +213,23 @@ const exportPdf = async () => {
     }
 
     const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'mm', 'a4') // A4 size
-
-    const imgWidth = 210 // A4 width in mm
-    const pageHeight = 295 // A4 height in mm
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const margin = 10
+    const imgWidth = 210 - 2 * margin
+    const pageHeight = 295
+    const usableHeight = pageHeight - 2 * margin
     const imgHeight = (canvas.height * imgWidth) / canvas.width
     let heightLeft = imgHeight
+    let position = margin
 
-    let position = 0
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pageHeight
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight)
+    heightLeft -= usableHeight
 
     while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
+      position = heightLeft - imgHeight + margin
       pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight)
+      heightLeft -= usableHeight
     }
 
     pdf.save('maternal_report.pdf')
@@ -275,18 +275,20 @@ const exportreportPdf = async () => {
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
+  const margin = 10
   const pxPerMm = canvas.width / (pageWidth * (window.devicePixelRatio || 1))
-  const imgWidthMm = pageWidth
-  const imgHeightMm = (canvas.height / pxPerMm) / (window.devicePixelRatio || 1)
+  const imgWidthMm = pageWidth - 2 * margin
+  const imgHeightMm = ((canvas.height / pxPerMm) / (window.devicePixelRatio || 1)) * (imgWidthMm / pageWidth)
+  const usableHeight = pageHeight - 2 * margin
 
   let remainingHeight = imgHeightMm
-  let position = 0
+  let position = margin
 
   while (remainingHeight > 0) {
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidthMm, imgHeightMm)
-    remainingHeight -= pageHeight
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidthMm, imgHeightMm)
+    remainingHeight -= usableHeight
     if (remainingHeight > 0) pdf.addPage()
-    position -= pageHeight
+    position -= usableHeight
   }
 
   pdf.save('report.pdf')

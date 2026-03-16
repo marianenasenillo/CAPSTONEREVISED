@@ -311,36 +311,8 @@ const saveHead = async () => {
       throw error
     }
 
-    // Insert detected service records
-    const baseData = {
-      purok: headPurok.value,
-      lastname: headLastname.value,
-      firstname: headFirstname.value,
-      middlename: headMiddlename.value,
-      suffix: headSuffix.value,
-      birthdate: headBirthdate.value,
-      age: headAge.value,
-      sex: headSex.value,
-      civil_status: headCivilStatus.value,
-    }
-    const servicePayloads = headDetection.buildPayloads(baseData)
-    const serviceErrors = []
-
-    for (const sp of servicePayloads) {
-      const { error: svcErr } = await supabase.from(sp.table).insert([sp.payload])
-      if (svcErr) {
-        console.error(`Failed to insert ${sp.label}:`, svcErr)
-        serviceErrors.push(sp.label)
-      }
-    }
-
-    if (serviceErrors.length > 0) {
-      toast.warning(`Head saved, but some service records failed: ${serviceErrors.join(', ')}`)
-    } else if (servicePayloads.length > 0) {
-      toast.success(`Household head saved with ${servicePayloads.length} service record(s)!`)
-    } else {
-      toast.success('Household head saved successfully!')
-    }
+    // Service records are now indicator-only — no auto-enrollment
+    toast.success('Household head saved successfully!')
 
     // Notify admin about new household head
     try {
@@ -426,37 +398,8 @@ const saveHousehold = async () => {
       throw error
     }
 
-    // Insert detected service records
-    const memberPurok = selectedHeadPurok.value || purok.value || ''
-    const baseData = {
-      purok: memberPurok,
-      lastname: lastname.value,
-      firstname: firstname.value,
-      middlename: middlename.value,
-      suffix: suffix.value,
-      birthdate: birthdate.value,
-      age: age.value,
-      sex: sex.value,
-      civil_status: civilStatus.value,
-    }
-    const servicePayloads = memberDetection.buildPayloads(baseData)
-    const serviceErrors = []
-
-    for (const sp of servicePayloads) {
-      const { error: svcErr } = await supabase.from(sp.table).insert([sp.payload])
-      if (svcErr) {
-        console.error(`Failed to insert ${sp.label}:`, svcErr)
-        serviceErrors.push(sp.label)
-      }
-    }
-
-    if (serviceErrors.length > 0) {
-      toast.warning(`Member saved, but some service records failed: ${serviceErrors.join(', ')}`)
-    } else if (servicePayloads.length > 0) {
-      toast.success(`Household member saved with ${servicePayloads.length} service record(s)!`)
-    } else {
-      toast.success('Household member saved successfully!')
-    }
+    // Service records are now indicator-only — no auto-enrollment
+    toast.success('Household member saved successfully!')
 
     // Notify admin about new household member
     try {
@@ -521,35 +464,73 @@ const directoryMembers = ref({})
 const expandedHeadIds = ref([])
 const loadingDirectory = ref(false)
 const directorySearch = ref('')
-
-const filteredDirectoryHeads = computed(() => {
-  if (!directorySearch.value.trim()) return directoryHeads.value
-  const q = directorySearch.value.toLowerCase()
-  return directoryHeads.value.filter(h => {
-    const text = `${h.head_id} ${h.lastname} ${h.firstname} ${h.middlename || ''} ${h.purok || ''}`.toLowerCase()
-    if (text.includes(q)) return true
-    const members = directoryMembers.value[h.head_id] || []
-    return members.some(m => `${m.lastname} ${m.firstname} ${m.middlename || ''}`.toLowerCase().includes(q))
-  })
+const directorySortMode = ref('purok') // 'purok' or 'alpha'
+const directoryYear = ref(new Date().getFullYear())
+const directoryAvailableYears = computed(() => {
+  const years = new Set()
+  for (const h of directoryHeads.value) { if (h.created_at) years.add(new Date(h.created_at).getFullYear()) }
+  for (const ids of Object.values(directoryMembers.value)) {
+    for (const m of ids) { if (m.created_at) years.add(new Date(m.created_at).getFullYear()) }
+  }
+  if (years.size === 0) years.add(new Date().getFullYear())
+  return [...years].sort((a, b) => b - a)
 })
 
-// Flat list of members matching search (shown when searching)
-const filteredDirectoryMembersList = computed(() => {
-  if (!directorySearch.value.trim()) return []
-  const q = directorySearch.value.toLowerCase()
-  const results = []
+// Flat list of ALL members (including heads) with head info attached, sorted by purok or alpha
+const allDirectoryMembers = computed(() => {
+  const list = []
+  const yr = directoryYear.value
   for (const h of directoryHeads.value) {
+    // Include the head themselves as a member entry
+    const headYear = h.created_at ? new Date(h.created_at).getFullYear() : yr
+    if (headYear === yr) {
+      list.push({
+        member_id: `head_${h.head_id}`,
+        head_id: h.head_id,
+        lastname: h.lastname,
+        firstname: h.firstname,
+        middlename: h.middlename || '',
+        suffix: h.suffix || '',
+        sex: h.sex,
+        age: h.age,
+        birthdate: h.birthdate,
+        civil_status: h.civil_status,
+        relationship: 'Head',
+        age_group: h.age_group || null,
+        created_at: h.created_at,
+        barangay: h.barangay,
+        _head: h,
+        _isHead: true,
+      })
+    }
     const members = directoryMembers.value[h.head_id] || []
     for (const m of members) {
-      if (`${m.lastname} ${m.firstname} ${m.middlename || ''}`.toLowerCase().includes(q)) {
-        results.push({ ...m, _head: h })
+      const mYear = m.created_at ? new Date(m.created_at).getFullYear() : yr
+      if (mYear === yr) {
+        list.push({ ...m, _head: h, _isHead: false })
       }
     }
   }
-  return results
+  if (directorySortMode.value === 'purok') {
+    list.sort((a, b) => {
+      const pa = (a._head.purok || 'ZZZ').toLowerCase()
+      const pb = (b._head.purok || 'ZZZ').toLowerCase()
+      if (pa !== pb) return pa.localeCompare(pb)
+      return (a.lastname || '').localeCompare(b.lastname || '')
+    })
+  } else {
+    list.sort((a, b) => (a.lastname || '').localeCompare(b.lastname || '') || (a.firstname || '').localeCompare(b.firstname || ''))
+  }
+  return list
 })
 
-const isDirectorySearchActive = computed(() => !!directorySearch.value.trim())
+// Filtered flat list (search active or default)
+const filteredDirectoryMembers = computed(() => {
+  const base = allDirectoryMembers.value
+  if (!directorySearch.value.trim()) return base
+  const q = directorySearch.value.toLowerCase()
+  return base.filter(m => `${m.lastname} ${m.firstname} ${m.middlename || ''} ${m._head.purok || ''}`.toLowerCase().includes(q))
+})
 
 const loadDirectory = async () => {
   loadingDirectory.value = true
@@ -935,7 +916,7 @@ const saveQuickAddRecord = async () => {
           <span class="mdi mdi-clipboard-text-outline"></span> Services
         </button>
         <button class="hs-tab" :class="{ active: profilingTab === 'directory' }" @click="profilingTab = 'directory'">
-          <span class="mdi mdi-account-group"></span> Members &amp; Heads Directory
+          <span class="mdi mdi-account-group"></span> Members Directory
         </button>
       </div>
 
@@ -982,11 +963,18 @@ const saveQuickAddRecord = async () => {
           <div class="inv-toolbar-left">
             <div class="hs-search-box">
               <span class="mdi mdi-magnify"></span>
-              <input v-model="directorySearch" type="search" placeholder="Search..." />
+              <input v-model="directorySearch" type="search" placeholder="Search members..." />
             </div>
+            <select v-model="directorySortMode" class="hs-select" style="width:auto;margin-left:8px;">
+              <option value="purok">Sort by Purok</option>
+              <option value="alpha">Sort Alphabetically</option>
+            </select>
+            <select v-model.number="directoryYear" class="hs-select" style="width:auto;margin-left:8px;">
+              <option v-for="y in directoryAvailableYears" :key="y" :value="y">{{ y }}</option>
+            </select>
           </div>
           <div class="inv-toolbar-right">
-            <span class="inv-count-label">{{ isDirectorySearchActive ? filteredDirectoryMembersList.length + ' member(s)' : filteredDirectoryHeads.length + ' household(s)' }}</span>
+            <span class="inv-count-label">{{ filteredDirectoryMembers.length }} member(s)</span>
             <button class="hs-btn hs-btn-secondary" @click="loadDirectory">
               <span class="mdi mdi-refresh"></span> Refresh
             </button>
@@ -997,85 +985,34 @@ const saveQuickAddRecord = async () => {
           <span class="mdi mdi-loading mdi-spin"></span> Loading directory...
         </div>
 
-        <!-- Flat member search results -->
-        <div v-else-if="isDirectorySearchActive">
-          <div v-if="filteredDirectoryMembersList.length === 0" class="dir-empty">
-            <span class="mdi mdi-account-search-outline"></span>
-            <p>No members found matching "{{ directorySearch }}".</p>
-          </div>
-          <div v-else class="dir-list">
-            <div class="dir-search-count">{{ filteredDirectoryMembersList.length }} member(s) found</div>
-            <div v-for="item in filteredDirectoryMembersList" :key="item.member_id" class="dir-member-row dir-member-search-result">
-              <div class="dir-member-icon"><span class="mdi mdi-account"></span></div>
-              <div class="dir-member-info">
-                <strong>{{ item.lastname }}, {{ item.firstname }} {{ item.middlename || '' }}</strong>
-                <span class="dir-member-meta">
-                  {{ (item.sex === 'M' ? 'Male' : item.sex === 'F' ? 'Female' : item.sex) || '—' }} &bull; Age: {{ item.age ?? '—' }} &bull; {{ item.relationship || '—' }} &bull; {{ item.civil_status || '—' }}
-                </span>
-                <span class="dir-member-head-label">Head: {{ item._head.lastname }}, {{ item._head.firstname }} ({{ item._head.purok || 'No Purok' }})</span>
-              </div>
-              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(item, 'member', item._head.purok)" title="Quick Add Record">
-                <span class="mdi mdi-plus-circle-outline"></span> Add Record
-              </button>
-              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(item, item._head)" title="Edit">
-                <span class="mdi mdi-pencil-outline"></span>
-              </button>
-              <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(item, item._head)" title="View Details">
-                <span class="mdi mdi-eye-outline"></span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Normal directory (no search) -->
-        <div v-else-if="filteredDirectoryHeads.length === 0" class="dir-empty">
-          <span class="mdi mdi-account-group-outline"></span>
-          <p>No household heads found.</p>
+        <div v-else-if="filteredDirectoryMembers.length === 0" class="dir-empty">
+          <span class="mdi mdi-account-search-outline"></span>
+          <p>{{ directorySearch ? 'No members found matching "' + directorySearch + '".' : 'No members found.' }}</p>
         </div>
 
         <div v-else class="dir-list">
-          <div v-for="head in filteredDirectoryHeads" :key="head.head_id" class="dir-head-card">
-            <div class="dir-head-row" @click="toggleHead(head.head_id)">
-              <span class="mdi" :class="expandedHeadIds.includes(head.head_id) ? 'mdi-chevron-down' : 'mdi-chevron-right'" style="font-size:18px;color:var(--hs-gray-400);"></span>
-              <div class="dir-head-icon"><span class="mdi mdi-home-account"></span></div>
-              <div class="dir-head-info">
-                <strong>{{ head.lastname }}, {{ head.firstname }} {{ head.middlename || '' }} {{ head.suffix || '' }}</strong>
-                <span class="dir-head-meta">{{ head.purok || 'No Purok' }} &bull; Head ID: {{ head.head_id }} &bull; {{ (directoryMembers[head.head_id] || []).length }} member(s)</span>
-              </div>
-              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(head, 'head', head.purok)" title="Quick Add Record">
-                <span class="mdi mdi-plus-circle-outline"></span> Add Record
-              </button>
-              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditHead(head)" title="Edit">
-                <span class="mdi mdi-pencil-outline"></span>
-              </button>
-              <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openHeadDetail(head)" title="View Details">
-                <span class="mdi mdi-eye-outline"></span>
-              </button>
+          <div class="dir-search-count">{{ filteredDirectoryMembers.length }} member(s)</div>
+          <div v-for="item in filteredDirectoryMembers" :key="item.member_id" class="dir-member-row">
+            <div class="dir-member-icon"><span :class="item._isHead ? 'mdi mdi-account-star' : 'mdi mdi-account'"></span></div>
+            <div class="dir-member-info">
+              <strong>{{ item.lastname }}, {{ item.firstname }} {{ item.middlename || '' }}</strong>
+              <span v-if="item._isHead" class="dir-head-badge">Head</span>
+              <span class="dir-member-meta">
+                {{ (item.sex === 'M' ? 'Male' : item.sex === 'F' ? 'Female' : item.sex) || '—' }} &bull; Age: {{ item.age ?? '—' }} &bull; {{ item.relationship || '—' }} &bull; {{ item.civil_status || '—' }}
+                <span v-if="item.age_group" class="dir-age-group-badge">{{ item.age_group }}</span>
+                <span v-if="item.age >= 10 && item.age <= 19" class="dir-deworming-note"><span class="mdi mdi-medical-bag"></span> Eligible for Deworming</span>
+              </span>
+              <span class="dir-member-head-label">Purok: {{ item._head.purok || 'N/A' }} &bull; Head: {{ item._head.lastname }}, {{ item._head.firstname }}</span>
             </div>
-
-            <div v-if="expandedHeadIds.includes(head.head_id)" class="dir-members">
-              <div v-if="!directoryMembers[head.head_id] || directoryMembers[head.head_id].length === 0" class="dir-member-empty">
-                No members registered under this household head.
-              </div>
-              <div v-for="member in (directoryMembers[head.head_id] || [])" :key="member.member_id" class="dir-member-row">
-                <div class="dir-member-icon"><span class="mdi mdi-account"></span></div>
-                <div class="dir-member-info">
-                  <strong>{{ member.lastname }}, {{ member.firstname }} {{ member.middlename || '' }}</strong>
-                  <span class="dir-member-meta">
-                    {{ (member.sex === 'M' ? 'Male' : member.sex === 'F' ? 'Female' : member.sex) || '—' }} &bull; Age: {{ member.age ?? '—' }} &bull; {{ member.relationship || '—' }} &bull; {{ member.civil_status || '—' }}
-                  </span>
-                </div>
-                <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(member, 'member', head.purok)" title="Quick Add Record">
-                  <span class="mdi mdi-plus-circle-outline"></span> Add Record
-                </button>
-                <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(member, head)" title="Edit">
-                  <span class="mdi mdi-pencil-outline"></span>
-                </button>
-                <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(member, head)" title="View Details">
-                  <span class="mdi mdi-eye-outline"></span>
-                </button>
-              </div>
-            </div>
+            <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(item, 'member', item._head.purok)" title="Quick Add Record">
+              <span class="mdi mdi-plus-circle-outline"></span> Add Record
+            </button>
+            <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(item, item._head)" title="Edit">
+              <span class="mdi mdi-pencil-outline"></span>
+            </button>
+            <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(item, item._head)" title="View Details">
+              <span class="mdi mdi-eye-outline"></span>
+            </button>
           </div>
         </div>
       </div>
@@ -2610,6 +2547,9 @@ const saveQuickAddRecord = async () => {
 .dir-member-info { flex: 1; min-width: 0; }
 .dir-member-info strong { display: block; font-size: var(--hs-font-size-xs); color: var(--hs-gray-700); }
 .dir-member-meta { font-size: 10px; color: var(--hs-gray-400); }
+.dir-age-group-badge { display: inline-block; background: var(--hs-primary-bg); color: var(--hs-primary); font-size: 9px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 600; }
+.dir-deworming-note { display: inline-flex; align-items: center; gap: 2px; background: #fef3c7; color: #92400e; font-size: 9px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 500; }
+.dir-head-badge { display: inline-block; background: var(--hs-success-bg); color: var(--hs-success); font-size: 9px; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 600; vertical-align: middle; }
 
 /* Record Type Selector Grid */
 .record-type-grid {

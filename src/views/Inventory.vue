@@ -13,29 +13,46 @@ const medSearchQuery = ref('')
 const toolSearchQuery = ref('')
 const logSearchQuery = ref('')
 
+const currentYear = new Date().getFullYear()
+const selectedYear = ref(currentYear)
+const availableYears = computed(() => {
+  const years = new Set()
+  for (const m of medicine.value) { if (m.created_at) years.add(new Date(m.created_at).getFullYear()) }
+  for (const t of tools.value) { if (t.created_at) years.add(new Date(t.created_at).getFullYear()) }
+  for (const tx of medTransactions.value) { if (tx.created_at) years.add(new Date(tx.created_at).getFullYear()) }
+  for (const tx of toolTransactions.value) { if (tx.created_at) years.add(new Date(tx.created_at).getFullYear()) }
+  if (years.size === 0) years.add(currentYear)
+  return [...years].sort((a, b) => b - a)
+})
+const yearFilteredMedicine = computed(() => medicine.value.filter(m => new Date(m.created_at).getFullYear() === selectedYear.value))
+const yearFilteredTools = computed(() => tools.value.filter(t => new Date(t.created_at).getFullYear() === selectedYear.value))
+
 const tools = ref([])
 const medicine = ref([])
 const medTransactions = ref([])
 const toolTransactions = ref([])
 const loading = ref(true)
 const userRole = ref(null)
+const userName = ref('')
 
 const showDetailModal = ref(false)
 const detailItem = ref(null)
 const detailType = ref('medicine')
 const openDetail = (item, type) => { detailItem.value = item; detailType.value = type; showDetailModal.value = true }
 
-const totalMedicineItems = computed(() => medicine.value.length)
-const totalTools = computed(() => tools.value.length)
-const totalMedicineStock = computed(() => medicine.value.reduce((s, m) => s + (m.quantity || 0), 0))
-const totalToolStock = computed(() => tools.value.reduce((s, t) => s + (t.quantity || 0), 0))
-const lowStockMedicine = computed(() => medicine.value.filter(m => m.quantity > 0 && m.quantity <= 5))
-const outOfStockMedicine = computed(() => medicine.value.filter(m => m.quantity <= 0))
-const lowStockTools = computed(() => tools.value.filter(t => t.quantity > 0 && t.quantity <= 5))
-const outOfStockTools = computed(() => tools.value.filter(t => t.quantity <= 0))
+const totalMedicineItems = computed(() => yearFilteredMedicine.value.length)
+const totalTools = computed(() => yearFilteredTools.value.length)
+const totalMedicineStock = computed(() => yearFilteredMedicine.value.reduce((s, m) => s + (m.quantity || 0), 0))
+const totalToolStock = computed(() => yearFilteredTools.value.reduce((s, t) => s + (t.quantity || 0), 0))
+const lowStockMedicine = computed(() => yearFilteredMedicine.value.filter(m => m.quantity > 0 && m.quantity <= 5))
+const outOfStockMedicine = computed(() => yearFilteredMedicine.value.filter(m => m.quantity <= 0))
+const lowStockTools = computed(() => yearFilteredTools.value.filter(t => t.quantity > 0 && t.quantity <= 5))
+const outOfStockTools = computed(() => yearFilteredTools.value.filter(t => t.quantity <= 0))
 const lowStockCount = computed(() => lowStockMedicine.value.length + lowStockTools.value.length)
 const outOfStockCount = computed(() => outOfStockMedicine.value.length + outOfStockTools.value.length)
-const totalDistributed = computed(() => medTransactions.value.length + toolTransactions.value.length)
+const yearFilteredMedTx = computed(() => medTransactions.value.filter(tx => new Date(tx.created_at).getFullYear() === selectedYear.value))
+const yearFilteredToolTx = computed(() => toolTransactions.value.filter(tx => new Date(tx.created_at).getFullYear() === selectedYear.value))
+const totalDistributed = computed(() => yearFilteredMedTx.value.length + yearFilteredToolTx.value.length)
 
 const getStockLevel = (qty) => {
   if (qty <= 0) return { label: 'Out of Stock', color: 'danger', percent: 0 }
@@ -45,25 +62,27 @@ const getStockLevel = (qty) => {
 }
 
 const filteredMedicine = computed(() => {
-  if (!medSearchQuery.value.trim()) return medicine.value
+  const base = yearFilteredMedicine.value
+  if (!medSearchQuery.value.trim()) return base
   const q = medSearchQuery.value.toLowerCase()
-  return medicine.value.filter(med => med.name.toLowerCase().includes(q))
+  return base.filter(med => med.name.toLowerCase().includes(q))
 })
 const filteredTools = computed(() => {
-  if (!toolSearchQuery.value.trim()) return tools.value
+  const base = yearFilteredTools.value
+  if (!toolSearchQuery.value.trim()) return base
   const q = toolSearchQuery.value.toLowerCase()
-  return tools.value.filter(tool => tool.name.toLowerCase().includes(q))
+  return base.filter(tool => tool.name.toLowerCase().includes(q))
 })
 
 // Distribution logs — merge medicine_transactions + tool_transactions
 const distributionLogs = computed(() => {
-  const medLogs = medTransactions.value.map(item => ({
+  const medLogs = yearFilteredMedTx.value.map(item => ({
     ...item,
     _type: 'Medicine',
     _item_name: item.medicine_name,
     _table: 'medicine_transactions',
   }))
-  const toolLogs = toolTransactions.value.map(item => ({
+  const toolLogs = yearFilteredToolTx.value.map(item => ({
     ...item,
     _type: 'Tool',
     _item_name: item.tool_name,
@@ -145,12 +164,22 @@ watch(logSearchQuery, () => resetPage())
 
 const showAddMedicineModal = ref(false)
 const addMedicineForm = ref({ name: '', quantity: 1, expiration: '' })
+
+const MEDICINE_OPTIONS = [
+  'Paracetamol', 'Amoxicillin', 'Mefenamic Acid', 'Ibuprofen', 'Cetirizine',
+  'Loperamide', 'Metformin', 'Amlodipine', 'Losartan', 'Salbutamol',
+  'Albendazole', 'Cotrimoxazole', 'Ferrous Sulfate', 'Vitamin A', 'Vitamin C',
+  'Oral Rehydration Salts', 'Antacid'
+]
+
 const openAddMedicineModal = () => { addMedicineForm.value = { name: '', quantity: 1, expiration: '' }; showAddMedicineModal.value = true }
+const addMedicineName = computed(() => addMedicineForm.value.name?.trim() || '')
 const confirmAddMedicine = async () => {
-  if (!addMedicineForm.value.name || !(addMedicineForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
+  const medName = addMedicineName.value
+  if (!medName || !(addMedicineForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
 
   // Duplicate check: same name + same expiration date
-  const normName = addMedicineForm.value.name.trim().toLowerCase()
+  const normName = medName.trim().toLowerCase()
   const formExp = addMedicineForm.value.expiration || null
   const duplicate = medicine.value.find(m => {
     const sameName = m.name.trim().toLowerCase() === normName
@@ -163,26 +192,43 @@ const confirmAddMedicine = async () => {
   }
 
   try {
-    await medicineApi.createMedicine({
-      name: addMedicineForm.value.name, quantity: addMedicineForm.value.quantity,
+    const newMed = await medicineApi.createMedicine({
+      name: medName, quantity: addMedicineForm.value.quantity,
       expiration: addMedicineForm.value.expiration ? new Date(addMedicineForm.value.expiration).toISOString() : null
     })
+    // Log the stock addition
+    await supabase.from('medicine_transactions').insert({
+      medicine_id: newMed.medicine_id, medicine_name: medName,
+      quantity: addMedicineForm.value.quantity, transaction_type: 'stock_in',
+      recipient_name: userName.value,
+      notes: `Initial stock added via Inventory by ${userName.value}`
+    })
     medicine.value = await medicineApi.listMedicine()
+    medTransactions.value = await medicineApi.listAvailedMedicine()
     showAddMedicineModal.value = false
     toast.success('Medicine added successfully.')
     // Notify BHW
-    notifyRole('BHW', { type: 'inventory_update', title: `New medicine added: ${addMedicineForm.value.name}`, message: `Qty: ${addMedicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-success)' })
+    notifyRole('BHW', { type: 'inventory_update', title: `New medicine added: ${medName}`, message: `Qty: ${addMedicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-success)' })
   } catch (err) { console.error('Failed to create medicine', err); toast.error('Failed to add medicine: ' + (err.message || err)) }
 }
 
 const showAddToolModal = ref(false)
 const addToolForm = ref({ name: '', quantity: 1 })
+
+const TOOL_OPTIONS = [
+  'BP Apparatus', 'Nebulizer', 'Thermometer', 'Weighing Scale',
+  'Measuring Tape', 'First Aid Kit', 'Stethoscope', 'Pulse Oximeter',
+  'Glucometer'
+]
+
 const openAddToolModal = () => { addToolForm.value = { name: '', quantity: 1 }; showAddToolModal.value = true }
+const addToolName = computed(() => addToolForm.value.name?.trim() || '')
 const confirmAddTool = async () => {
-  if (!addToolForm.value.name || !(addToolForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
+  const toolName = addToolName.value
+  if (!toolName || !(addToolForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
 
   // Duplicate check: same name (tools don't have expiration)
-  const normName = addToolForm.value.name.trim().toLowerCase()
+  const normName = toolName.trim().toLowerCase()
   const duplicate = tools.value.find(t => t.name.trim().toLowerCase() === normName)
   if (duplicate) {
     toast.warning(`"${duplicate.name}" already exists. Use Stock In to add more quantity.`)
@@ -190,12 +236,20 @@ const confirmAddTool = async () => {
   }
 
   try {
-    await toolsApi.createTool({ name: addToolForm.value.name, quantity: addToolForm.value.quantity })
+    const newTool = await toolsApi.createTool({ name: toolName, quantity: addToolForm.value.quantity })
+    // Log the stock addition
+    await supabase.from('tool_transactions').insert({
+      tool_id: newTool.tool_id, tool_name: toolName,
+      quantity: addToolForm.value.quantity, transaction_type: 'stock_in',
+      recipient_name: userName.value,
+      notes: `Initial stock added via Inventory by ${userName.value}`
+    })
     tools.value = await toolsApi.listTools()
+    toolTransactions.value = await toolsApi.listAvailedTools()
     showAddToolModal.value = false
     toast.success('Tool added successfully.')
     // Notify BHW
-    notifyRole('BHW', { type: 'inventory_update', title: `New tool added: ${addToolForm.value.name}`, message: `Qty: ${addToolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-success)' })
+    notifyRole('BHW', { type: 'inventory_update', title: `New tool added: ${toolName}`, message: `Qty: ${addToolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-success)' })
   } catch (err) { console.error('Failed to create tool', err); toast.error('Failed to add tool: ' + (err.message || err)) }
 }
 
@@ -210,10 +264,23 @@ const openEditMedicine = (med) => {
 const confirmEditMedicine = async () => {
   if (!editMedicineForm.value.name) { toast.warning('Name is required.'); return }
   try {
+    const oldQty = editingMedicine.value.quantity || 0
+    const newQty = Number(editMedicineForm.value.quantity)
+    const diff = newQty - oldQty
     await medicineApi.updateMedicine(editingMedicine.value.medicine_id, {
-      name: editMedicineForm.value.name, quantity: Number(editMedicineForm.value.quantity),
+      name: editMedicineForm.value.name, quantity: newQty,
       expiration: editMedicineForm.value.expiration ? new Date(editMedicineForm.value.expiration).toISOString() : null
     })
+    // Log quantity change if any
+    if (diff !== 0) {
+      await supabase.from('medicine_transactions').insert({
+        medicine_id: editingMedicine.value.medicine_id, medicine_name: editMedicineForm.value.name,
+        quantity: Math.abs(diff), transaction_type: diff > 0 ? 'stock_in' : 'stock_out',
+        recipient_name: userName.value,
+        notes: `Stock ${diff > 0 ? 'increased' : 'decreased'} by ${Math.abs(diff)} via Inventory Update by ${userName.value}`
+      })
+      medTransactions.value = await medicineApi.listAvailedMedicine()
+    }
     medicine.value = await medicineApi.listMedicine()
     showEditMedicineModal.value = false; showDetailModal.value = false
     toast.success('Medicine updated successfully.')
@@ -241,7 +308,20 @@ const openEditTool = (tool) => {
 const confirmEditTool = async () => {
   if (!editToolForm.value.name) { toast.warning('Name is required.'); return }
   try {
-    await toolsApi.updateTool(editingTool.value.tool_id, { name: editToolForm.value.name, quantity: Number(editToolForm.value.quantity) })
+    const oldQty = editingTool.value.quantity || 0
+    const newQty = Number(editToolForm.value.quantity)
+    const diff = newQty - oldQty
+    await toolsApi.updateTool(editingTool.value.tool_id, { name: editToolForm.value.name, quantity: newQty })
+    // Log quantity change if any
+    if (diff !== 0) {
+      await supabase.from('tool_transactions').insert({
+        tool_id: editingTool.value.tool_id, tool_name: editToolForm.value.name,
+        quantity: Math.abs(diff), transaction_type: diff > 0 ? 'stock_in' : 'stock_out',
+        recipient_name: userName.value,
+        notes: `Stock ${diff > 0 ? 'increased' : 'decreased'} by ${Math.abs(diff)} via Inventory Update by ${userName.value}`
+      })
+      toolTransactions.value = await toolsApi.listAvailedTools()
+    }
     tools.value = await toolsApi.listTools()
     showEditToolModal.value = false; showDetailModal.value = false
     toast.success('Tool updated successfully.')
@@ -270,19 +350,17 @@ async function notifyRole(targetRole, { type, title, message, icon, color, link 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const fmtDate = (d) => {
   if (!d) return '—'
-  const [datePart] = String(d).split('T')
-  const [y, m, day] = datePart.split('-')
-  return `${MONTHS[parseInt(m) - 1]} ${parseInt(day)}, ${y}`
+  const dt = new Date(d)
+  return `${MONTHS[dt.getMonth()]} ${dt.getDate()}, ${dt.getFullYear()}`
 }
 const fmtDateTime = (d) => {
   if (!d) return '—'
-  const [datePart, timePart = '00:00'] = String(d).split('T')
-  const [y, m, day] = datePart.split('-')
-  const [hStr, minStr] = timePart.split(':')
-  const h = parseInt(hStr)
+  const dt = new Date(d)
+  const h = dt.getHours()
+  const min = String(dt.getMinutes()).padStart(2, '0')
   const ampm = h >= 12 ? 'PM' : 'AM'
   const h12 = h % 12 || 12
-  return `${MONTHS[parseInt(m) - 1]} ${parseInt(day)}, ${y}, ${h12}:${minStr} ${ampm}`
+  return `${MONTHS[dt.getMonth()]} ${dt.getDate()}, ${dt.getFullYear()}, ${h12}:${min} ${ampm}`
 }
 const isExpiringSoon = (exp) => { if (!exp) return false; const diff = (new Date(exp) - new Date()) / 864e5; return diff > 0 && diff <= 90 }
 const isExpired = (exp) => exp ? new Date(exp) < new Date() : false
@@ -293,7 +371,11 @@ onMounted(async () => {
   try { medicine.value = await medicineApi.listMedicine() } catch { medicine.value = [] }
   try { medTransactions.value = await medicineApi.listAvailedMedicine() } catch { medTransactions.value = [] }
   try { toolTransactions.value = await toolsApi.listAvailedTools() } catch { toolTransactions.value = [] }
-  try { const { data } = await supabase.auth.getUser(); userRole.value = data?.user?.user_metadata?.role || null } catch {}
+  try {
+    const { data } = await supabase.auth.getUser()
+    userRole.value = data?.user?.user_metadata?.role || null
+    userName.value = data?.user?.user_metadata?.full_name || data?.user?.email || ''
+  } catch { /* auth check */ }
   loading.value = false
 })
 </script>
@@ -303,6 +385,12 @@ onMounted(async () => {
     <div class="hs-page-header">
       <h1><span class="mdi mdi-package-variant-closed"></span> Inventory Management</h1>
       <p class="hs-module-desc">Track medicine stocks, medical tools, and distribution history.</p>
+      <div class="inv-year-filter">
+        <label class="inv-year-label"><span class="mdi mdi-calendar"></span> Year:</label>
+        <select v-model.number="selectedYear" class="hs-select inv-year-select">
+          <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+        </select>
+      </div>
     </div>
 
     <!-- Summary Stats -->
@@ -340,7 +428,7 @@ onMounted(async () => {
         <span v-if="lowStockTools.length > 0" class="hs-badge hs-badge-warning">{{ lowStockTools.length }}</span>
       </button>
       <button class="hs-tab" :class="{ active: activeTab === 'logs' }" @click="activeTab = 'logs'">
-        <span class="mdi mdi-clipboard-text-clock-outline"></span> Transactions
+        <span class="mdi mdi-clipboard-text-clock-outline"></span> Activity Logs
       </button>
     </div>
 
@@ -354,40 +442,56 @@ onMounted(async () => {
           </div>
         </div>
         <div class="inv-toolbar-right">
-          <span class="inv-count-label">{{ filteredMedicine.length }} of {{ medicine.length }} items</span>
+          <span class="inv-count-label">{{ filteredMedicine.length }} of {{ yearFilteredMedicine.length }} items</span>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-primary" @click="openAddMedicineModal"><span class="mdi mdi-plus"></span> Add Medicine</button>
         </div>
       </div>
-      <div class="inv-grid">
-        <div v-for="med in filteredMedicine" :key="med.medicine_id" class="inv-card" :class="{ 'inv-card--out': med.quantity <= 0, 'inv-card--low': med.quantity > 0 && med.quantity <= 5 }" @click="openDetail(med, 'medicine')">
-          <div class="inv-card-header">
-            <div class="inv-card-icon"><span class="mdi mdi-pill"></span></div>
-            <div class="inv-card-title-group">
-              <h4 class="inv-card-name">{{ med.name }}</h4>
-              <span v-if="med.expiration" class="inv-card-exp" :class="{ 'inv-card-exp--warn': isExpiringSoon(med.expiration), 'inv-card-exp--expired': isExpired(med.expiration) }">
-                <span class="mdi mdi-calendar-clock"></span> {{ isExpired(med.expiration) ? 'Expired' : 'Exp' }}: {{ fmtDate(med.expiration) }}
-              </span>
-              <span v-else class="inv-card-exp">No expiration set</span>
-            </div>
-          </div>
-          <div class="inv-card-body">
-            <div class="inv-stock-row">
-              <span class="inv-stock-qty">{{ med.quantity }}</span>
-              <span class="inv-stock-unit">units</span>
-              <span class="inv-stock-badge" :class="'inv-stock-badge--' + getStockLevel(med.quantity).color">{{ getStockLevel(med.quantity).label }}</span>
-            </div>
-            <div class="inv-stock-bar"><div class="inv-stock-bar-fill" :class="'inv-stock-bar--' + getStockLevel(med.quantity).color" :style="{ width: getStockLevel(med.quantity).percent + '%' }"></div></div>
-          </div>
-          <div class="inv-card-footer">
-            <span class="inv-card-date">Added {{ fmtDate(med.created_at) }}</span>
-            <div class="inv-card-actions" v-if="userRole === 'Admin'">
-              <button class="hs-btn hs-btn-sm hs-btn-secondary" @click.stop="openEditMedicine(med)" title="Edit"><span class="mdi mdi-pencil"></span></button>
-              <button class="hs-btn hs-btn-sm hs-btn-danger" @click.stop="confirmDeleteMedicine(med)" title="Delete"><span class="mdi mdi-delete"></span></button>
-            </div>
-          </div>
+      <div class="hs-card hs-card--flush">
+        <div class="hs-table-scroll">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Quantity</th>
+                <th>Status</th>
+                <th>Expiration</th>
+                <th>Date Added</th>
+                <th v-if="userRole === 'Admin'" style="width:80px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="med in filteredMedicine" :key="med.medicine_id" class="inv-log-row" @click="openDetail(med, 'medicine')">
+                <td>
+                  <div class="inv-table-name">
+                    <span class="mdi mdi-pill inv-table-icon"></span>
+                    <strong>{{ med.name }}</strong>
+                  </div>
+                </td>
+                <td><strong>{{ med.quantity }}</strong> units</td>
+                <td>
+                  <span class="inv-stock-badge" :class="'inv-stock-badge--' + getStockLevel(med.quantity).color">{{ getStockLevel(med.quantity).label }}</span>
+                </td>
+                <td>
+                  <span v-if="med.expiration" :class="{ 'hs-text-danger': isExpired(med.expiration), 'hs-text-warning': isExpiringSoon(med.expiration) }">
+                    {{ fmtDate(med.expiration) }}
+                    <span v-if="isExpired(med.expiration)" class="hs-badge hs-badge-danger" style="margin-left:4px;font-size:10px;">Expired</span>
+                    <span v-else-if="isExpiringSoon(med.expiration)" class="hs-badge hs-badge-warning" style="margin-left:4px;font-size:10px;">Expiring</span>
+                  </span>
+                  <span v-else class="hs-text-muted">—</span>
+                </td>
+                <td>{{ fmtDate(med.created_at) }}</td>
+                <td v-if="userRole === 'Admin'" @click.stop>
+                  <div class="inv-card-actions">
+                    <button class="hs-btn hs-btn-sm hs-btn-secondary" @click="openEditMedicine(med)" title="Edit"><span class="mdi mdi-pencil"></span></button>
+                    <button class="hs-btn hs-btn-sm hs-btn-danger" @click="confirmDeleteMedicine(med)" title="Delete"><span class="mdi mdi-delete"></span></button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="loading"><td :colspan="userRole === 'Admin' ? 6 : 5" class="hs-table-empty"><span class="mdi mdi-loading mdi-spin"></span> Loading medicine...</td></tr>
+              <tr v-else-if="filteredMedicine.length === 0"><td :colspan="userRole === 'Admin' ? 6 : 5" class="hs-table-empty">No medicine found</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div v-if="loading" class="inv-empty-state"><span class="mdi mdi-loading mdi-spin"></span><p>Loading medicine...</p></div>
-        <div v-else-if="filteredMedicine.length === 0" class="inv-empty-state"><span class="mdi mdi-pill-off"></span><p>No medicine found</p></div>
       </div>
     </div>
 
@@ -401,37 +505,47 @@ onMounted(async () => {
           </div>
         </div>
         <div class="inv-toolbar-right">
-          <span class="inv-count-label">{{ filteredTools.length }} of {{ tools.length }} items</span>
+          <span class="inv-count-label">{{ filteredTools.length }} of {{ yearFilteredTools.length }} items</span>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-primary" @click="openAddToolModal"><span class="mdi mdi-plus"></span> Add Tool</button>
         </div>
       </div>
-      <div class="inv-grid">
-        <div v-for="tool in filteredTools" :key="tool.tool_id" class="inv-card" :class="{ 'inv-card--out': tool.quantity <= 0, 'inv-card--low': tool.quantity > 0 && tool.quantity <= 5 }" @click="openDetail(tool, 'tool')">
-          <div class="inv-card-header">
-            <div class="inv-card-icon inv-card-icon--tool"><span class="mdi mdi-wrench"></span></div>
-            <div class="inv-card-title-group">
-              <h4 class="inv-card-name">{{ tool.name }}</h4>
-              <span class="inv-card-exp">Medical Equipment</span>
-            </div>
-          </div>
-          <div class="inv-card-body">
-            <div class="inv-stock-row">
-              <span class="inv-stock-qty">{{ tool.quantity }}</span>
-              <span class="inv-stock-unit">units</span>
-              <span class="inv-stock-badge" :class="'inv-stock-badge--' + getStockLevel(tool.quantity).color">{{ getStockLevel(tool.quantity).label }}</span>
-            </div>
-            <div class="inv-stock-bar"><div class="inv-stock-bar-fill" :class="'inv-stock-bar--' + getStockLevel(tool.quantity).color" :style="{ width: getStockLevel(tool.quantity).percent + '%' }"></div></div>
-          </div>
-          <div class="inv-card-footer">
-            <span class="inv-card-date">Added {{ fmtDate(tool.created_at) }}</span>
-            <div class="inv-card-actions" v-if="userRole === 'Admin'">
-              <button class="hs-btn hs-btn-sm hs-btn-secondary" @click.stop="openEditTool(tool)" title="Edit"><span class="mdi mdi-pencil"></span></button>
-              <button class="hs-btn hs-btn-sm hs-btn-danger" @click.stop="confirmDeleteTool(tool)" title="Delete"><span class="mdi mdi-delete"></span></button>
-            </div>
-          </div>
+      <div class="hs-card hs-card--flush">
+        <div class="hs-table-scroll">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Quantity</th>
+                <th>Status</th>
+                <th>Date Added</th>
+                <th v-if="userRole === 'Admin'" style="width:80px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tool in filteredTools" :key="tool.tool_id" class="inv-log-row" @click="openDetail(tool, 'tool')">
+                <td>
+                  <div class="inv-table-name">
+                    <span class="mdi mdi-wrench inv-table-icon inv-table-icon--tool"></span>
+                    <strong>{{ tool.name }}</strong>
+                  </div>
+                </td>
+                <td><strong>{{ tool.quantity }}</strong> units</td>
+                <td>
+                  <span class="inv-stock-badge" :class="'inv-stock-badge--' + getStockLevel(tool.quantity).color">{{ getStockLevel(tool.quantity).label }}</span>
+                </td>
+                <td>{{ fmtDate(tool.created_at) }}</td>
+                <td v-if="userRole === 'Admin'" @click.stop>
+                  <div class="inv-card-actions">
+                    <button class="hs-btn hs-btn-sm hs-btn-secondary" @click="openEditTool(tool)" title="Edit"><span class="mdi mdi-pencil"></span></button>
+                    <button class="hs-btn hs-btn-sm hs-btn-danger" @click="confirmDeleteTool(tool)" title="Delete"><span class="mdi mdi-delete"></span></button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="loading"><td :colspan="userRole === 'Admin' ? 5 : 4" class="hs-table-empty"><span class="mdi mdi-loading mdi-spin"></span> Loading tools...</td></tr>
+              <tr v-else-if="filteredTools.length === 0"><td :colspan="userRole === 'Admin' ? 5 : 4" class="hs-table-empty">No tools found</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div v-if="loading" class="inv-empty-state"><span class="mdi mdi-loading mdi-spin"></span><p>Loading tools...</p></div>
-        <div v-else-if="filteredTools.length === 0" class="inv-empty-state"><span class="mdi mdi-wrench-off"></span><p>No tools found</p></div>
       </div>
     </div>
 
@@ -441,7 +555,7 @@ onMounted(async () => {
         <div class="inv-toolbar-left">
           <div class="hs-search-box">
             <span class="mdi mdi-magnify"></span>
-            <input v-model="logSearchQuery" type="search" placeholder="Search distribution logs..." />
+            <input v-model="logSearchQuery" type="search" placeholder="Search activity logs..." />
           </div>
         </div>
         <div class="inv-toolbar-right"><span class="inv-count-label">{{ totalItems }} total entries</span></div>
@@ -449,7 +563,7 @@ onMounted(async () => {
       <div class="hs-card hs-card--flush">
         <div class="hs-table-scroll">
           <table class="hs-table">
-            <thead><tr><th>Date & Time</th><th>Recipient</th><th>Item</th><th>Type</th><th>Txn Type</th><th>Qty</th><th>Purpose</th><th>Notes</th><th>Status</th><th style="width:60px;"></th></tr></thead>
+            <thead><tr><th>Date & Time</th><th>Name</th><th>Item</th><th>Type</th><th>Txn Type</th><th>Qty</th><th>Purpose</th><th>Notes</th><th>Status</th><th style="width:60px;"></th></tr></thead>
             <tbody>
               <tr v-for="(log, idx) in paginatedLogs" :key="idx" class="inv-log-row" @click="openTxDetail(log)">
                 <td>{{ fmtDateTime(log.created_at) }}</td>
@@ -459,8 +573,18 @@ onMounted(async () => {
                 </td>
                 <td>{{ log._item_name }}</td>
                 <td><span :class="log._type === 'Medicine' ? 'hs-badge hs-badge-success' : 'hs-badge hs-badge-info'"><span :class="log._type === 'Medicine' ? 'mdi mdi-pill' : 'mdi mdi-wrench'" style="font-size:10px;margin-right:2px;"></span> {{ log._type }}</span></td>
-                <td><span class="hs-badge hs-badge-secondary">{{ log.transaction_type || '—' }}</span></td>
-                <td><strong>{{ log.quantity }}</strong></td>
+                <td>
+                  <span v-if="log.transaction_type === 'stock_in'" class="hs-badge hs-badge-success"><span class="mdi mdi-arrow-up-bold" style="font-size:10px;margin-right:2px;"></span> Stock In</span>
+                  <span v-else-if="log.transaction_type === 'stock_out'" class="hs-badge hs-badge-danger"><span class="mdi mdi-arrow-down-bold" style="font-size:10px;margin-right:2px;"></span> Stock Out</span>
+                  <span v-else-if="log.transaction_type === 'borrow'" class="hs-badge hs-badge-warning"><span class="mdi mdi-swap-horizontal" style="font-size:10px;margin-right:2px;"></span> Borrow</span>
+                  <span v-else-if="log.transaction_type === 'distribute' || log.transaction_type === 'request'" class="hs-badge hs-badge-info"><span class="mdi mdi-truck-delivery" style="font-size:10px;margin-right:2px;"></span> Distributed</span>
+                  <span v-else class="hs-badge hs-badge-secondary">{{ log.transaction_type || '—' }}</span>
+                </td>
+                <td>
+                  <span v-if="log.transaction_type === 'stock_in'" class="inv-qty-badge inv-qty-badge--add">+{{ log.quantity }}</span>
+                  <span v-else-if="log.transaction_type === 'stock_out' || log.transaction_type === 'borrow' || log.transaction_type === 'distribute' || log.transaction_type === 'request'" class="inv-qty-badge inv-qty-badge--sub">-{{ log.quantity }}</span>
+                  <strong v-else>{{ log.quantity }}</strong>
+                </td>
                 <td class="inv-log-purpose">{{ log.purpose || '—' }}</td>
                 <td class="inv-log-notes">
                   <span v-if="log.notes" class="inv-notes-preview" :title="log.notes">{{ log.notes.length > 30 ? log.notes.slice(0, 30) + '…' : log.notes }}</span>
@@ -540,7 +664,13 @@ onMounted(async () => {
         <div class="hs-modal-header"><h3>Add New Tool</h3><button class="hs-modal-close" @click="showAddToolModal = false">&times;</button></div>
         <div class="hs-modal-body">
           <form @submit.prevent="confirmAddTool">
-            <div class="hs-form-group"><label class="hs-label">Tool Name</label><input v-model="addToolForm.name" class="hs-input" placeholder="Enter tool name" /></div>
+            <div class="hs-form-group">
+              <label class="hs-label">Tool Name</label>
+              <input v-model="addToolForm.name" class="hs-input" list="tool-suggestions" placeholder="Type tool name..." autocomplete="off" />
+              <datalist id="tool-suggestions">
+                <option v-for="opt in TOOL_OPTIONS" :key="opt" :value="opt" />
+              </datalist>
+            </div>
             <div class="hs-form-group"><label class="hs-label">Initial Quantity</label><input v-model.number="addToolForm.quantity" type="number" class="hs-input" min="1" /></div>
             <div class="hs-modal-footer hs-modal-footer--flat"><button type="button" class="hs-btn hs-btn-secondary" @click="showAddToolModal = false">Cancel</button><button type="submit" class="hs-btn hs-btn-primary"><span class="mdi mdi-plus"></span> Add Tool</button></div>
           </form>
@@ -554,7 +684,13 @@ onMounted(async () => {
         <div class="hs-modal-header"><h3>Add New Medicine</h3><button class="hs-modal-close" @click="showAddMedicineModal = false">&times;</button></div>
         <div class="hs-modal-body">
           <form @submit.prevent="confirmAddMedicine">
-            <div class="hs-form-group"><label class="hs-label">Medicine Name</label><input v-model="addMedicineForm.name" class="hs-input" placeholder="Enter medicine name" /></div>
+            <div class="hs-form-group">
+              <label class="hs-label">Medicine Name</label>
+              <input v-model="addMedicineForm.name" class="hs-input" list="medicine-suggestions" placeholder="Type medicine name..." autocomplete="off" />
+              <datalist id="medicine-suggestions">
+                <option v-for="opt in MEDICINE_OPTIONS" :key="opt" :value="opt" />
+              </datalist>
+            </div>
             <div class="hs-form-row">
               <div class="hs-form-group"><label class="hs-label">Initial Quantity</label><input v-model.number="addMedicineForm.quantity" type="number" class="hs-input" min="1" /></div>
               <div class="hs-form-group"><label class="hs-label">Expiration Date</label><input v-model="addMedicineForm.expiration" type="date" class="hs-input" /></div>
@@ -642,7 +778,7 @@ onMounted(async () => {
           <div class="inv-detail-grid">
             <div class="inv-detail-field"><span class="inv-detail-label">Date</span><span class="inv-detail-value">{{ fmtDateTime(txDetailItem.created_at) }}</span></div>
             <div class="inv-detail-field"><span class="inv-detail-label">Quantity</span><span class="inv-detail-value">{{ txDetailItem.quantity }}</span></div>
-            <div class="inv-detail-field"><span class="inv-detail-label">Recipient</span><span class="inv-detail-value">{{ txDetailItem.recipient_name || '—' }}</span></div>
+            <div class="inv-detail-field"><span class="inv-detail-label">{{ txDetailItem.transaction_type === 'stock_in' || txDetailItem.transaction_type === 'stock_out' ? 'Performed By' : 'Recipient' }}</span><span class="inv-detail-value">{{ txDetailItem.recipient_name || '—' }}</span></div>
             <div class="inv-detail-field"><span class="inv-detail-label">Purok</span><span class="inv-detail-value">{{ txDetailItem.recipient_purok || '—' }}</span></div>
             <div class="inv-detail-field"><span class="inv-detail-label">Purpose</span><span class="inv-detail-value">{{ txDetailItem.purpose || '—' }}</span></div>
             <div v-if="txDetailItem._type === 'Medicine'" class="inv-detail-field"><span class="inv-detail-label">Prescribed By</span><span class="inv-detail-value">{{ txDetailItem.prescribed_by || '—' }}</span></div>
@@ -667,6 +803,10 @@ onMounted(async () => {
 <style scoped>
 .service-page { max-width: var(--hs-content-max-width); }
 .inv-stat--alert { border-color: var(--hs-danger-bg); background: var(--hs-danger-bg); }
+
+.inv-year-filter { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.inv-year-label { font-size: var(--hs-font-size-sm); font-weight: 500; color: var(--hs-gray-600); display: flex; align-items: center; gap: 4px; }
+.inv-year-select { width: auto; min-width: 90px; }
 
 .inv-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; flex-wrap: wrap; gap: 8px; }
 .inv-toolbar-left { display: flex; align-items: center; gap: 8px; }
@@ -728,6 +868,10 @@ onMounted(async () => {
 .inv-log-row { cursor: pointer; transition: background 80ms ease; }
 .inv-log-row:hover { background: var(--hs-gray-50); }
 .inv-log-sub { font-size: 11px; color: var(--hs-gray-400); }
+
+.inv-table-name { display: flex; align-items: center; gap: 8px; }
+.inv-table-icon { font-size: 16px; color: var(--hs-primary); }
+.inv-table-icon--tool { color: var(--hs-info); }
 .inv-log-purpose { max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .inv-log-notes { max-width: 160px; }
 .inv-notes-preview { font-size: var(--hs-font-size-xs); color: var(--hs-gray-600); }
@@ -737,4 +881,8 @@ onMounted(async () => {
 .inv-tx-notes { margin-top: 16px; padding: 12px; background: var(--hs-gray-50); border-radius: var(--hs-radius-md); }
 .inv-tx-notes p { margin: 4px 0 0; font-size: var(--hs-font-size-sm); color: var(--hs-gray-700); white-space: pre-wrap; }
 .hs-badge-secondary { background: var(--hs-gray-100); color: var(--hs-gray-600); }
+
+.inv-qty-badge { font-weight: 700; font-size: var(--hs-font-size-sm); padding: 2px 8px; border-radius: 6px; }
+.inv-qty-badge--add { color: var(--hs-success); background: var(--hs-success-bg); }
+.inv-qty-badge--sub { color: var(--hs-danger); background: var(--hs-danger-bg); }
 </style>

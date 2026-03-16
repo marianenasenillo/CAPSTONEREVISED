@@ -311,9 +311,20 @@ const navRecords = [
   { label: 'Deworming Records', icon: 'mdi-file-document-outline', path: '/phsrecords' },
 ]
 
+const navServices = [
+  { label: 'Maternal and Women Care', icon: 'mdi-mother-heart', path: '/maternalservices' },
+  { label: 'Child Care', icon: 'mdi-baby-carriage', path: '/childcare' },
+  { label: 'Family Planning', icon: 'mdi-account-heart-outline', path: '/familyplanning' },
+  { label: 'Preventive Health', icon: 'mdi-shield-check-outline', path: '/preventivehealthservices' },
+]
+
 async function logout() {
-  await supabase.auth.signOut()
-  router.push('/')
+  try {
+    await supabase.auth.signOut()
+  } catch (e) {
+    console.error('Sign out error:', e)
+  }
+  router.replace('/')
 }
 
 async function uploadAvatar(event) {
@@ -475,6 +486,40 @@ async function saveProfile() {
           <span class="mdi mdi-account-cash-outline hs-nav-icon"></span>
           <span v-if="!sidebarCollapsed || isMobile" class="hs-nav-label">Borrower Profiling</span>
         </button>
+
+        <!-- Services Group (BHW only) -->
+        <div v-if="userRole === 'BHW'" class="hs-nav-group">
+          <div v-if="!sidebarCollapsed || isMobile" class="hs-nav-section-label" style="margin-top: 6px;">Services</div>
+          <button
+            class="hs-nav-group-toggle"
+            @click="toggleGroup('services')"
+            :title="sidebarCollapsed && !isMobile ? 'Services' : ''"
+          >
+            <span class="mdi mdi-medical-bag hs-nav-icon"></span>
+            <template v-if="!sidebarCollapsed || isMobile">
+              <span class="hs-nav-label">Services</span>
+              <span
+                class="mdi hs-nav-chevron"
+                :class="isGroupExpanded('services') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+              ></span>
+            </template>
+          </button>
+          <div
+            v-if="isGroupExpanded('services') && (!sidebarCollapsed || isMobile)"
+            class="hs-nav-subitems"
+          >
+            <button
+              v-for="item in navServices"
+              :key="item.path"
+              class="hs-nav-item sub"
+              :class="{ active: isActive(item.path) }"
+              @click="navigateTo(item.path)"
+            >
+              <span :class="'mdi ' + item.icon + ' hs-nav-icon'"></span>
+              <span class="hs-nav-label">{{ item.label }}</span>
+            </button>
+          </div>
+        </div>
 
         <!-- Records Group -->
         <div class="hs-nav-group">

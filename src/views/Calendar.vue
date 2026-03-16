@@ -16,6 +16,30 @@ const modalEvent = ref({ text: '', description: '', start: '', end: '' })
 const isAdmin = ref(false)
 const filterType = ref('')
 
+const quickAdd = ref({ text: '', description: '', type: 'task', date: '' })
+
+async function saveQuickAdd() {
+  try {
+    if (!isAdmin.value) return
+    const payload = {
+      text: quickAdd.value.text,
+      description: quickAdd.value.description,
+      start: quickAdd.value.date,
+      end: quickAdd.value.date,
+      type: quickAdd.value.type,
+    }
+    const { data, error } = await supabase.from('events').insert(payload).select()
+    if (error) throw error
+    const r = data[0]
+    events.value.push({ id: r.id, start: r.start, end: r.end, text: r.text, description: r.description, type: r.type, locked: r.locked })
+    toast.success('Event added successfully')
+    quickAdd.value = { text: '', description: '', type: 'task', date: '' }
+  } catch (err) {
+    console.error('Failed to quick-add event', err)
+    toast.error('Failed to add event: ' + (err.message || err))
+  }
+}
+
 const colors = {
   event: "#4a7a1a",
   task: "#2563eb",
@@ -46,6 +70,9 @@ const onEventResized = async (args) => {
 }
 
 const onTimeRangeSelected = async (args) => {
+  const clickedDate = args.start.toString('yyyy-MM-dd')
+  // Always auto-fill the quick add date in sidebar
+  quickAdd.value.date = clickedDate
   if (!isAdmin.value) {
     toast.warning('Only Admin users can add events.')
     args.control.clearSelection()
@@ -67,7 +94,9 @@ const onEventClicked = async (args) => {
 
 function openAddEventModal(start, end) {
   modalMode.value = 'add'
-  modalEvent.value = { text: '', description: '', start, end }
+  const startStr = typeof start === 'string' ? start : (start.toString ? start.toString('yyyy-MM-dd') : start)
+  const endStr = typeof end === 'string' ? end : (end.toString ? end.toString('yyyy-MM-dd') : end)
+  modalEvent.value = { text: '', description: '', start: startStr, end: endStr, type: 'event' }
   showEventModal.value = true
 }
 
@@ -536,7 +565,31 @@ onMounted(async () => {
           <!-- Quick Add (Admin only) -->
           <div v-if="isAdmin" class="hs-card cal-panel hs-mt-4">
             <h3 class="cal-quick-add-title"><span class="mdi mdi-plus-circle-outline"></span> Quick Add</h3>
-            <p class="cal-quick-add-desc">Click any date on the calendar to create a new event, or use the context menu on existing events.</p>
+            <p class="cal-quick-add-desc">Fill in below or click a date on the calendar.</p>
+            <div class="hs-form-group hs-mt-2">
+              <label class="hs-label">Title</label>
+              <input v-model="quickAdd.text" class="hs-input" placeholder="Event title" />
+            </div>
+            <div class="hs-form-group hs-mt-2">
+              <label class="hs-label">Type</label>
+              <select v-model="quickAdd.type" class="hs-select">
+                <option value="event">Event</option>
+                <option value="task">Task</option>
+                <option value="reminder">Reminder</option>
+                <option value="holiday">Holiday</option>
+              </select>
+            </div>
+            <div class="hs-form-group hs-mt-2">
+              <label class="hs-label">Date</label>
+              <input v-model="quickAdd.date" type="date" class="hs-input" />
+            </div>
+            <div class="hs-form-group hs-mt-2">
+              <label class="hs-label">Description</label>
+              <textarea v-model="quickAdd.description" class="hs-input" rows="2" placeholder="Optional description"></textarea>
+            </div>
+            <button class="hs-btn hs-btn-primary hs-w-full hs-mt-3" :disabled="!quickAdd.text || !quickAdd.date" @click="saveQuickAdd">
+              <span class="mdi mdi-plus"></span> Add
+            </button>
           </div>
         </div>
       </div>

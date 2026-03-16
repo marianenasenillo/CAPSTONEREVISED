@@ -278,7 +278,7 @@ onMounted(async () => {
               <div class="public-program-icon" style="background: #fce4ec; color: #c62828;">
                 <span class="mdi mdi-mother-nurse"></span>
               </div>
-              <h3>Maternal Services</h3>
+              <h3>Maternal and Women Care</h3>
               <p>Women of Reproductive Age monitoring &amp; Cervical Cancer Screening</p>
             </div>
             <div class="public-program-card">

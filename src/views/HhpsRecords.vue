@@ -36,6 +36,39 @@ const closeReport = () => (showReport.value = false)
 
 const showActionsDropdown = ref(null)
 
+const selectedIds = ref([])
+const selectAllChecked = computed({
+  get: () => paginatedData.value.length > 0 && paginatedData.value.every(r => selectedIds.value.includes(r.head_id)),
+  set: (val) => {
+    if (val) {
+      const ids = paginatedData.value.map(r => r.head_id)
+      selectedIds.value = [...new Set([...selectedIds.value, ...ids])]
+    } else {
+      const pageIds = new Set(paginatedData.value.map(r => r.head_id))
+      selectedIds.value = selectedIds.value.filter(id => !pageIds.has(id))
+    }
+  }
+})
+const batchDelete = async () => {
+  if (selectedIds.value.length === 0) return
+  if (!confirm(`Remove ${selectedIds.value.length} selected record(s)? This cannot be undone.`)) return
+  try {
+    const { error } = await supabase.from('household_heads').delete().in('head_id', selectedIds.value)
+    if (error) throw error
+    selectedIds.value = []
+    await fetchHeadRecords()
+  } catch (e) { console.error(e); alert('Error removing records.') }
+}
+
+const currentYear = new Date().getFullYear()
+const selectedYear = ref(currentYear)
+const availableYears = computed(() => {
+  const years = []
+  for (let y = 2024; y <= currentYear + 1; y++) years.push(y)
+  return years
+})
+watch(selectedYear, () => fetchHeadRecords())
+
 const toggleActions = (id) => {
   showActionsDropdown.value = showActionsDropdown.value === id ? null : id
 }
@@ -87,6 +120,8 @@ const fetchHeadRecords = async () => {
       .select('*')
       .eq('barangay', userBarangay)
       .eq('is_archived', false)
+      .gte('created_at', `${selectedYear.value}-01-01T00:00:00`)
+      .lte('created_at', `${selectedYear.value}-12-31T23:59:59`)
       .order('created_at', { ascending: false })
 
     if (err) throw err
@@ -243,23 +278,23 @@ const exportPdf = async () => {
     }
 
     const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF('p', 'mm', 'a4') // A4 size
-
-    const imgWidth = 210 // A4 width in mm
-    const pageHeight = 295 // A4 height in mm
+    const pdf = new jsPDF('p', 'mm', 'a4')
+    const margin = 10
+    const imgWidth = 210 - 2 * margin
+    const pageHeight = 295
+    const usableHeight = pageHeight - 2 * margin
     const imgHeight = (canvas.height * imgWidth) / canvas.width
     let heightLeft = imgHeight
+    let position = margin
 
-    let position = 0
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pageHeight
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight)
+    heightLeft -= usableHeight
 
     while (heightLeft >= 0) {
-      position = heightLeft - imgHeight
+      position = heightLeft - imgHeight + margin
       pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pageHeight
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight)
+      heightLeft -= usableHeight
     }
 
     pdf.save('household_report.pdf')
@@ -305,18 +340,20 @@ const exportreportPdf = async () => {
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
+  const margin = 10
   const pxPerMm = canvas.width / (pageWidth * (window.devicePixelRatio || 1))
-  const imgWidthMm = pageWidth
-  const imgHeightMm = (canvas.height / pxPerMm) / (window.devicePixelRatio || 1)
+  const imgWidthMm = pageWidth - 2 * margin
+  const imgHeightMm = ((canvas.height / pxPerMm) / (window.devicePixelRatio || 1)) * (imgWidthMm / pageWidth)
+  const usableHeight = pageHeight - 2 * margin
 
   let remainingHeight = imgHeightMm
-  let position = 0
+  let position = margin
 
   while (remainingHeight > 0) {
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidthMm, imgHeightMm)
-    remainingHeight -= pageHeight
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidthMm, imgHeightMm)
+    remainingHeight -= usableHeight
     if (remainingHeight > 0) pdf.addPage()
-    position -= pageHeight
+    position -= usableHeight
   }
 
   pdf.save('report.pdf')
@@ -331,12 +368,15 @@ const exportreportPdf = async () => {
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Household Profiling / Records</div>
-        <h1>Household Head Records</h1>
+        <h1>Household Head Records <span class="hs-badge hs-badge-info">As of {{ selectedYear }}</span></h1>
       </div>
 
       <div class="hs-toolbar">
         <div class="hs-toolbar-left">
           <button class="hs-btn hs-btn-secondary" @click="goBack"><span class="mdi mdi-arrow-left"></span> Back</button>
+          <select v-model="selectedYear" class="hs-select" style="width:auto;">
+            <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+          </select>
           <select v-model="selectedPurok" class="hs-select" style="width:auto;">
             <option value="">Purok</option>
             <option value="Purok 1">Purok 1</option>
@@ -351,9 +391,14 @@ const exportreportPdf = async () => {
               <input v-model="searchQuery" type="search" placeholder="Search..." />
             </div>
           <button class="hs-btn hs-btn-primary" @click="exportPdf"><span class="mdi mdi-file-export-outline"></span> Export</button>
-          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-warning" @click="router.push('/hhpsarchived')"><span class="mdi mdi-archive-outline"></span> Archived</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
         </div>
+      </div>
+
+      <div v-if="selectedIds.length > 0" class="hs-batch-bar">
+        <span class="hs-batch-count">{{ selectedIds.length }} selected</span>
+        <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Remove Selected</button>
+        <button class="hs-btn hs-btn-sm hs-btn-ghost" @click="selectedIds = []"><span class="mdi mdi-close"></span> Clear</button>
       </div>
 
       <div v-if="loading" class="hs-empty-state"><div class="hs-spinner"></div><p>Loading records...</p></div>
@@ -363,6 +408,7 @@ const exportreportPdf = async () => {
           <table class="hs-table">
             <thead>
               <tr>
+                <th style="width:40px;"><input type="checkbox" v-model="selectAllChecked" /></th>
                 <th>Head ID</th>
                 <th>Purok</th>
                 <th>Last Name</th>
@@ -378,6 +424,7 @@ const exportreportPdf = async () => {
             </thead>
             <tbody>
               <tr v-for="record in paginatedData" :key="record.head_id">
+                <td><input type="checkbox" :value="record.head_id" v-model="selectedIds" /></td>
                 <td>{{ record.head_id }}</td>
                 <td>{{ record.purok }}</td>
                 <td>{{ record.lastname }}</td>
@@ -395,12 +442,11 @@ const exportreportPdf = async () => {
                       <v-list-item @click="viewMembers(record)">View Members</v-list-item>
                       <v-list-item v-if="userRole === 'BHW'" @click="editRecord(record)">Edit</v-list-item>
                       <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
-                      <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
                     </v-list>
                   </v-menu>
                 </td>
               </tr>
-              <tr v-if="filteredRecords.length === 0"><td colspan="11" style="text-align:center;padding:32px;color:var(--hs-gray-400);">No records found.</td></tr>
+              <tr v-if="filteredRecords.length === 0"><td colspan="12" style="text-align:center;padding:32px;color:var(--hs-gray-400);">No records found.</td></tr>
             </tbody>
           </table>
         </div>

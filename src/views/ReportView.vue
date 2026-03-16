@@ -72,18 +72,20 @@ const exportPdf = async () => {
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
 
+  const margin = 10
   const pxPerMm = canvas.width / (pageWidth * (window.devicePixelRatio || 1))
-  const imgWidthMm = pageWidth
-  const imgHeightMm = (canvas.height / pxPerMm) / (window.devicePixelRatio || 1)
+  const imgWidthMm = pageWidth - 2 * margin
+  const imgHeightMm = ((canvas.height / pxPerMm) / (window.devicePixelRatio || 1)) * (imgWidthMm / pageWidth)
+  const usableHeight = pageHeight - 2 * margin
 
   let remainingHeight = imgHeightMm
-  let position = 0
+  let position = margin
 
   while (remainingHeight > 0) {
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidthMm, imgHeightMm)
-    remainingHeight -= pageHeight
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidthMm, imgHeightMm)
+    remainingHeight -= usableHeight
     if (remainingHeight > 0) pdf.addPage()
-    position -= pageHeight
+    position -= usableHeight
   }
 
   pdf.save('report.pdf')

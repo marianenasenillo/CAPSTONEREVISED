@@ -1433,6 +1433,13 @@ a:hover {
   color: var(--hs-gray-400);
 }
 
+/* Batch Selection Bar */
+.hs-batch-bar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  background: var(--hs-primary-bg); border: 1px solid var(--hs-primary); border-radius: var(--hs-radius-md); margin-bottom: 12px;
+}
+.hs-batch-count { font-size: var(--hs-font-size-sm); font-weight: 600; color: var(--hs-primary); }
+
 /* Form Field with Icon */
 .hs-field-icon-wrapper {
   position: relative;

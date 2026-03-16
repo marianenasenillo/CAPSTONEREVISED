@@ -85,7 +85,7 @@ onMounted(async () => {
         maintainAspectRatio: false,
         plugins: {
           legend: { position: 'top' },
-          title: { display: true, text: `Comparative Population per Purok - ${selectedBarangay.value}` }
+          title: { display: true, text: `Population per Purok - ${selectedBarangay.value}` }
         }
       }
     })
@@ -255,7 +255,7 @@ const generateDiscussion = () => {
               </div>
               <hr class="my-4" />
               <div class="text-center mb-4">
-                <h4 class="fw-bold">Comparative Report</h4>
+                <h4 class="fw-bold">Report</h4>
                 <p>
                   {{ selectedBarangay }} – Municipality of Buenavista, Agusan del Norte <br />
                   Reporting Period: {{ reportingPeriod }}
@@ -279,10 +279,10 @@ const generateDiscussion = () => {
         </div>
       </div>
 
-      <!-- Comparative Population per Purok Pie Chart -->
+      <!-- Population per Purok Pie Chart -->
       <div class="col-md-6 mb-4">
         <div class="card p-3 shadow-sm">
-          <h5 class="text-center mb-3">Comparative Population per Purok</h5>
+          <h5 class="text-center mb-3">Population per Purok</h5>
           <canvas ref="purokPieCanvas"></canvas>
         </div>
       </div>
