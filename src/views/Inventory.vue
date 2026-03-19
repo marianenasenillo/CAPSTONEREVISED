@@ -165,12 +165,13 @@ watch(logSearchQuery, () => resetPage())
 const showAddMedicineModal = ref(false)
 const addMedicineForm = ref({ name: '', quantity: 1, expiration: '' })
 
-const MEDICINE_OPTIONS = [
-  'Paracetamol', 'Amoxicillin', 'Mefenamic Acid', 'Ibuprofen', 'Cetirizine',
-  'Loperamide', 'Metformin', 'Amlodipine', 'Losartan', 'Salbutamol',
-  'Albendazole', 'Cotrimoxazole', 'Ferrous Sulfate', 'Vitamin A', 'Vitamin C',
-  'Oral Rehydration Salts', 'Antacid'
-]
+// Medicine name suggestions sourced from registered stocks + activity logs
+const MEDICINE_OPTIONS = computed(() => {
+  const names = new Set()
+  medicine.value.forEach(m => { if (m.name) names.add(m.name) })
+  medTransactions.value.forEach(tx => { if (tx.medicine_name) names.add(tx.medicine_name) })
+  return [...names].sort()
+})
 
 const openAddMedicineModal = () => { addMedicineForm.value = { name: '', quantity: 1, expiration: '' }; showAddMedicineModal.value = true }
 const addMedicineName = computed(() => addMedicineForm.value.name?.trim() || '')
@@ -215,16 +216,18 @@ const confirmAddMedicine = async () => {
 const showAddToolModal = ref(false)
 const addToolForm = ref({ name: '', quantity: 1 })
 
-const TOOL_OPTIONS = [
-  'BP Apparatus', 'Nebulizer', 'Thermometer', 'Weighing Scale',
-  'Measuring Tape', 'First Aid Kit', 'Stethoscope', 'Pulse Oximeter',
-  'Glucometer'
-]
+// Tool name suggestions sourced from registered stocks + activity logs
+const TOOL_OPTIONS = computed(() => {
+  const names = new Set()
+  tools.value.forEach(t => { if (t.name) names.add(t.name) })
+  toolTransactions.value.forEach(tx => { if (tx.tool_name) names.add(tx.tool_name) })
+  return [...names].sort()
+})
 
 const openAddToolModal = () => { addToolForm.value = { name: '', quantity: 1 }; showAddToolModal.value = true }
 const addToolName = computed(() => addToolForm.value.name?.trim() || '')
 
-// Custom suggestion dropdowns — show 4 initially, search filters all
+// Custom suggestion dropdowns — show 3 initially, search filters all
 const showMedSuggestions = ref(false)
 const showToolSuggestions = ref(false)
 const showEditMedSuggestions = ref(false)
@@ -232,26 +235,26 @@ const showEditToolSuggestions = ref(false)
 
 const filteredMedicineSuggestions = computed(() => {
   const q = (addMedicineForm.value.name || '').trim().toLowerCase()
-  if (!q) return MEDICINE_OPTIONS.slice(0, 4)
-  return MEDICINE_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+  if (!q) return MEDICINE_OPTIONS.value.slice(0, 3)
+  return MEDICINE_OPTIONS.value.filter(opt => opt.toLowerCase().includes(q))
 })
 
 const filteredToolSuggestions = computed(() => {
   const q = (addToolForm.value.name || '').trim().toLowerCase()
-  if (!q) return TOOL_OPTIONS.slice(0, 4)
-  return TOOL_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+  if (!q) return TOOL_OPTIONS.value.slice(0, 3)
+  return TOOL_OPTIONS.value.filter(opt => opt.toLowerCase().includes(q))
 })
 
 const filteredEditMedSuggestions = computed(() => {
   const q = (editMedicineForm.value.name || '').trim().toLowerCase()
-  if (!q) return MEDICINE_OPTIONS.slice(0, 4)
-  return MEDICINE_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+  if (!q) return MEDICINE_OPTIONS.value.slice(0, 3)
+  return MEDICINE_OPTIONS.value.filter(opt => opt.toLowerCase().includes(q))
 })
 
 const filteredEditToolSuggestions = computed(() => {
   const q = (editToolForm.value.name || '').trim().toLowerCase()
-  if (!q) return TOOL_OPTIONS.slice(0, 4)
-  return TOOL_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+  if (!q) return TOOL_OPTIONS.value.slice(0, 3)
+  return TOOL_OPTIONS.value.filter(opt => opt.toLowerCase().includes(q))
 })
 
 const selectMedSuggestion = (opt) => { addMedicineForm.value.name = opt; showMedSuggestions.value = false }
