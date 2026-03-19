@@ -4,6 +4,7 @@ import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { calculateAge } from '@/utils/ageClassification'
 import { supabase } from '@/utils/supabase.js'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
@@ -327,7 +328,10 @@ const exportreportPdf = async () => {
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Maternal Care / WRA Records</div>
-        <h1>Women of Reproductive Age Records <span class="hs-badge hs-badge-info">As of {{ selectedYear }}</span></h1>
+        <div class="hs-page-header-title-row">
+          <h1>Women of Reproductive Age Records</h1>
+          <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ selectedYear }}</div>
+        </div>
         <p class="hs-module-desc">View, edit, and manage Women of Reproductive Age service records.</p>
       </div>
 
@@ -414,7 +418,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.suffix }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '—') }}</td>
                 <td>{{ record.birthdate }}</td>
                 <td>{{ record.seStatus }}</td>
                 <td>{{ record.civilStatus }}</td>

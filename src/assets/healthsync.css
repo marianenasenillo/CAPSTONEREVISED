@@ -223,6 +223,23 @@ a:hover {
   color: var(--hs-gray-600);
 }
 
+/* Year Banner — "As of YEAR" badge for records pages */
+.hs-year-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--hs-primary-bg);
+  color: var(--hs-primary);
+  border-radius: var(--hs-radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.hs-year-banner .mdi {
+  font-size: 0.95rem;
+}
+
 /* Buttons */
 .hs-btn {
   display: inline-flex;
@@ -672,6 +689,16 @@ a:hover {
 /* Page Header */
 .hs-page-header {
   margin-bottom: var(--hs-space-6);
+}
+.hs-page-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+.hs-page-header-title-row h1 {
+  margin-bottom: 0;
 }
 .hs-page-header h1 {
   font-size: 1.375rem;

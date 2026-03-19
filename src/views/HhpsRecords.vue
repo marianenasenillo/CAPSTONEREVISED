@@ -2,6 +2,7 @@
 import DashboardView from '@/components/DashboardView.vue'
 import Hhpsexport from '@/components/reports/Hhpsexport.vue'
 import html2canvas from 'html2canvas'
+import { calculateAge } from '@/utils/ageClassification'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import jsPDF from 'jspdf'
@@ -368,7 +369,10 @@ const exportreportPdf = async () => {
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Household Profiling / Records</div>
-        <h1>Household Head Records <span class="hs-badge hs-badge-info">As of {{ selectedYear }}</span></h1>
+        <div class="hs-page-header-title-row">
+          <h1>Household Head Records</h1>
+          <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ selectedYear }}</div>
+        </div>
       </div>
 
       <div class="hs-toolbar">
@@ -509,7 +513,7 @@ const exportreportPdf = async () => {
                     <td>{{ m.middlename }}</td>
                     <td>{{ m.relationship }}</td>
                     <td>{{ m.birthdate }}</td>
-                    <td>{{ m.age }}</td>
+                    <td>{{ m.birthdate ? calculateAge(m.birthdate) : (m.age ?? '—') }}</td>
                     <td>{{ sexDisplay(m.sex) }}</td>
                     <td>{{ m.civil_status }}</td>
                     <td>{{ m.education }}</td>

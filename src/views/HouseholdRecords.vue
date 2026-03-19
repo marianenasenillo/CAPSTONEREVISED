@@ -583,7 +583,10 @@ const exportreportPdf = async () => {
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Household Profiling / Records</div>
-        <h1>Household Head Records <span class="hs-badge hs-badge-info">As of {{ selectedYear }}</span></h1>
+        <div class="hs-page-header-title-row">
+          <h1>Household Head Records</h1>
+          <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ selectedYear }}</div>
+        </div>
         <p class="hs-module-desc">View, edit, and export household profiling records.</p>
       </div>
 
@@ -667,7 +670,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.suffix }}</td>
                 <td>{{ record.birthdate || '-' }}</td>
-                <td>{{ record.age ?? '-' }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '-') }}</td>
                 <td>{{ sexDisplay(record.sex) }}</td>
                 <td>{{ record.civil_status || '-' }}</td>
                 <td>{{ record.contact_number || '-' }}</td>
@@ -765,7 +768,7 @@ const exportreportPdf = async () => {
                     <td>{{ m.middlename }}</td>
                     <td>{{ m.relationship }}</td>
                     <td>{{ m.birthdate }}</td>
-                    <td>{{ m.age }}</td>
+                    <td>{{ m.birthdate ? calculateAge(m.birthdate) : (m.age ?? '—') }}</td>
                     <td>{{ sexDisplay(m.sex) }}</td>
                     <td>{{ m.civil_status }}</td>
                     <td>{{ m.education }}</td>

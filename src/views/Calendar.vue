@@ -116,6 +116,10 @@ async function saveEventModal() {
       toast.warning('Only Admin can save events.')
       return
     }
+    if (!modalEvent.value.text?.trim()) {
+      toast.warning('Please enter an event title.')
+      return
+    }
     if (modalMode.value === 'add') {
       const payload = {
         text: modalEvent.value.text,
@@ -242,19 +246,7 @@ const editEvent = async (e) => {
     toast.warning('Only Admin can edit events.')
     return
   }
-  const form = [
-    { name: "Title", id: "text" },
-    { name: "Description", id: "description" }
-  ]
-  const modal = await DayPilot.Modal.form(form, e.data)
-  if (modal.canceled) return
-  monthRef.value.control.events.update(modal.result)
-  try {
-    const id = modal.result.id || e.data.id
-    await supabase.from('events').update({ text: modal.result.text, description: modal.result.description }).eq('id', id)
-  } catch (err) {
-    console.error('Failed to persist editEvent', err)
-  }
+  openEditEventModal(e.data)
 }
 
 const deleteEvent = async (e) => {
@@ -549,7 +541,7 @@ onMounted(async () => {
             <div class="event-list-scroll">
               <div v-for="event in currentMonthEvents" :key="event.id" class="event-item" :style="{ borderLeftColor: colors[event.type] || colors.event }">
                 <div class="cal-event-header">
-                  <strong>{{ event.text }}</strong>
+                  <strong>{{ event.text || '(Untitled)' }}</strong>
                   <span class="cal-type-badge" :style="{ background: (colors[event.type] || colors.event) + '22', color: colors[event.type] || colors.event }">{{ event.type || 'event' }}</span>
                 </div>
                 <p v-if="event.description" class="cal-event-desc">{{ event.description }}</p>
@@ -666,6 +658,22 @@ onMounted(async () => {
   font-weight: 700;
   font-size: 12px;
   line-height: 1;
+}
+
+/* Fit event text in calendar day cells — no overflow hidden */
+:deep(.month_default_event_inner) {
+  overflow: visible !important;
+  white-space: normal !important;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.3;
+  padding: 2px 4px;
+}
+:deep(.month_default_cell_inner) {
+  overflow: visible !important;
+}
+:deep(.month_default_event) {
+  overflow: visible !important;
 }
 .cal-stats-row { display: flex; gap: var(--hs-space-3); flex-wrap: wrap; margin-bottom: var(--hs-space-5); }
 .cal-panel { padding: var(--hs-space-4); }

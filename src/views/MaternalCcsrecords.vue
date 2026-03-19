@@ -4,6 +4,7 @@ import MaternalExport from '@/components/reports/MaternalExport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { ref, onMounted, computed, watch } from 'vue'
+import { calculateAge } from '@/utils/ageClassification'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 import { usePagination } from '@/composables/usePagination'
@@ -353,7 +354,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.suffix }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '—') }}</td>
                 <td>{{ record.birthdate }}</td>
                 <td>{{ record.screened }}</td>
                 <td>

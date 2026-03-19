@@ -339,12 +339,16 @@ export async function getActiveBorrows(filters = {}) {
   return listToolTransactions({ ...filters, status: 'borrowed' })
 }
 
-export async function getMostRequestedMedicines(limit = 10) {
-  const { data, error } = await supabase
+export async function getMostRequestedMedicines(limit = 10, { startDate, endDate } = {}) {
+  let query = supabase
     .from('medicine_transactions')
     .select('medicine_name, medicine_id, quantity')
     .order('created_at', { ascending: false })
 
+  if (startDate) query = query.gte('created_at', startDate)
+  if (endDate) query = query.lte('created_at', endDate)
+
+  const { data, error } = await query
   if (error) throw error
 
   const agg = {}
@@ -362,13 +366,17 @@ export async function getMostRequestedMedicines(limit = 10) {
     .slice(0, limit)
 }
 
-export async function getMostBorrowedTools(limit = 10) {
-  const { data, error } = await supabase
+export async function getMostBorrowedTools(limit = 10, { startDate, endDate } = {}) {
+  let query = supabase
     .from('tool_transactions')
     .select('tool_name, tool_id, quantity')
     .eq('transaction_type', 'borrow')
     .order('created_at', { ascending: false })
 
+  if (startDate) query = query.gte('created_at', startDate)
+  if (endDate) query = query.lte('created_at', endDate)
+
+  const { data, error } = await query
   if (error) throw error
 
   const agg = {}
@@ -386,23 +394,28 @@ export async function getMostBorrowedTools(limit = 10) {
     .slice(0, limit)
 }
 
-export async function getMonthlyUsageTrends(months = 6) {
+export async function getMonthlyUsageTrends(months = 6, { startDate, endDate } = {}) {
   const since = new Date()
   since.setMonth(since.getMonth() - months)
-  const sinceISO = since.toISOString()
+  const sinceISO = startDate || since.toISOString()
 
-  const [medResult, toolResult] = await Promise.all([
-    supabase
-      .from('medicine_transactions')
-      .select('quantity, created_at')
-      .gte('created_at', sinceISO)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('tool_transactions')
-      .select('quantity, created_at')
-      .gte('created_at', sinceISO)
-      .order('created_at', { ascending: true }),
-  ])
+  let medQuery = supabase
+    .from('medicine_transactions')
+    .select('quantity, created_at')
+    .gte('created_at', sinceISO)
+    .order('created_at', { ascending: true })
+  let toolQuery = supabase
+    .from('tool_transactions')
+    .select('quantity, created_at')
+    .gte('created_at', sinceISO)
+    .order('created_at', { ascending: true })
+
+  if (endDate) {
+    medQuery = medQuery.lte('created_at', endDate)
+    toolQuery = toolQuery.lte('created_at', endDate)
+  }
+
+  const [medResult, toolResult] = await Promise.all([medQuery, toolQuery])
 
   if (medResult.error) throw medResult.error
   if (toolResult.error) throw toolResult.error

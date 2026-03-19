@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
+import { calculateAge } from '@/utils/ageClassification'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 const toast = useToast()
@@ -163,7 +164,7 @@ const deleteRecord = async (record) => {
                 <td>{{ record.suffix }}</td>
                 <td>{{ record.relationship || '-' }}</td>
                 <td>{{ record.birthdate || '-' }}</td>
-                <td>{{ record.age ?? '-' }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '-') }}</td>
                 <td>{{ sexDisplay(record.sex) }}</td>
                 <td>{{ record.civil_status || '-' }}</td>
                 <td>{{ record.archived_at ? new Date(record.archived_at).toLocaleDateString() : '-' }}</td>

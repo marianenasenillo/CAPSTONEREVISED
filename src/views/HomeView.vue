@@ -296,14 +296,15 @@ const showAbout = ref(false)
 .year-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 8px;
+  padding: 6px 16px;
   background: var(--hs-primary-bg);
   color: var(--hs-primary);
   border-radius: var(--hs-radius-md);
-  font-size: var(--hs-font-size-sm);
-  font-weight: 500;
-  margin-bottom: 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  letter-spacing: 0.01em;
 }
 
 .report-summary-text {

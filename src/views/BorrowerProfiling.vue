@@ -123,12 +123,25 @@ async function loadData() {
   }
 }
 
+function getAnalyticsDateRange() {
+  const y = analyticsYear.value
+  const m = analyticsMonth.value
+  if (m) {
+    const startDate = `${y}-${String(m).padStart(2, '0')}-01T00:00:00`
+    const lastDay = new Date(y, m, 0).getDate()
+    const endDate = `${y}-${String(m).padStart(2, '0')}-${lastDay}T23:59:59`
+    return { startDate, endDate }
+  }
+  return { startDate: `${y}-01-01T00:00:00`, endDate: `${y}-12-31T23:59:59` }
+}
+
 async function loadAnalytics() {
   try {
+    const range = getAnalyticsDateRange()
     const [topMed, topTool, trends, borrows] = await Promise.all([
-      getMostRequestedMedicines(10),
-      getMostBorrowedTools(10),
-      getMonthlyUsageTrends(6),
+      getMostRequestedMedicines(10, range),
+      getMostBorrowedTools(10, range),
+      getMonthlyUsageTrends(12, range),
       listToolTransactions({ status: 'borrowed' }),
     ])
     topMedicines.value = topMed
@@ -268,10 +281,39 @@ async function handleReturnTool(tx) {
   }
 }
 
+// Delete borrower profile (not their medicine/tool transactions)
+async function deleteBorrower(borrower) {
+  if (!confirm(`Delete borrower profile for ${borrower.firstname} ${borrower.lastname}? This will NOT delete their medicine/tool transaction history.`)) return
+  try {
+    const { error } = await supabase.from('borrower_profiles').delete().eq('borrower_id', borrower.borrower_id)
+    if (error) throw error
+    toast.success('Borrower profile deleted')
+    await loadData()
+  } catch (err) {
+    toast.error('Failed to delete: ' + (err.message || err))
+    console.error(err)
+  }
+}
+
+// Analytics filters
+const analyticsYear = ref(new Date().getFullYear())
+const analyticsMonth = ref('')
+const analyticsAvailableYears = computed(() => {
+  const years = new Set()
+  years.add(new Date().getFullYear())
+  for (let y = 2024; y <= new Date().getFullYear(); y++) years.add(y)
+  return [...years].sort((a, b) => b - a)
+})
+const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
 watch(activeTab, (tab) => {
   if (tab === 'analytics') {
     loadAnalytics()
   }
+})
+
+watch([analyticsYear, analyticsMonth], () => {
+  loadAnalytics()
 })
 
 onMounted(async () => {
@@ -284,7 +326,7 @@ onMounted(async () => {
   <div class="hs-page">
     <div class="hs-page-header">
       <div>
-        <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower & Patient Profiling</h1>
+        <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower Profiling</h1>
         <p class="hs-page-subtitle">Manage borrower profiles, medicine requests, and tool borrow records</p>
       </div>
     </div>
@@ -361,6 +403,9 @@ onMounted(async () => {
                       <button class="hs-btn hs-btn-ghost hs-btn-sm" @click="openToolForm(b)" title="Borrow Tool">
                         <span class="mdi mdi-wrench"></span> Borrow
                       </button>
+                      <button class="hs-btn hs-btn-ghost hs-btn-sm" style="color:var(--hs-danger)" @click="deleteBorrower(b)" title="Delete Profile">
+                        <span class="mdi mdi-delete-outline"></span> Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -426,6 +471,19 @@ onMounted(async () => {
 
       <!-- ANALYTICS TAB -->
       <div v-if="activeTab === 'analytics'" class="bp-analytics">
+        <!-- Year / Month Filter -->
+        <div class="hs-toolbar" style="margin-bottom:16px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select v-model.number="analyticsYear" class="hs-select hs-w-auto">
+              <option v-for="y in analyticsAvailableYears" :key="y" :value="y">{{ y }}</option>
+            </select>
+            <select v-model="analyticsMonth" class="hs-select hs-w-auto">
+              <option value="">All Months</option>
+              <option v-for="(name, idx) in monthNames" :key="idx" :value="idx + 1">{{ name }}</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Summary Stats -->
         <div class="bp-analytics-summary">
           <div class="bp-summary-card">
@@ -877,7 +935,7 @@ onMounted(async () => {
 /* Analytics */
 .bp-analytics-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }

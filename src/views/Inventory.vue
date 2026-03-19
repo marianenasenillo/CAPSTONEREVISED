@@ -223,6 +223,47 @@ const TOOL_OPTIONS = [
 
 const openAddToolModal = () => { addToolForm.value = { name: '', quantity: 1 }; showAddToolModal.value = true }
 const addToolName = computed(() => addToolForm.value.name?.trim() || '')
+
+// Custom suggestion dropdowns — show 4 initially, search filters all
+const showMedSuggestions = ref(false)
+const showToolSuggestions = ref(false)
+const showEditMedSuggestions = ref(false)
+const showEditToolSuggestions = ref(false)
+
+const filteredMedicineSuggestions = computed(() => {
+  const q = (addMedicineForm.value.name || '').trim().toLowerCase()
+  if (!q) return MEDICINE_OPTIONS.slice(0, 4)
+  return MEDICINE_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+})
+
+const filteredToolSuggestions = computed(() => {
+  const q = (addToolForm.value.name || '').trim().toLowerCase()
+  if (!q) return TOOL_OPTIONS.slice(0, 4)
+  return TOOL_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+})
+
+const filteredEditMedSuggestions = computed(() => {
+  const q = (editMedicineForm.value.name || '').trim().toLowerCase()
+  if (!q) return MEDICINE_OPTIONS.slice(0, 4)
+  return MEDICINE_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+})
+
+const filteredEditToolSuggestions = computed(() => {
+  const q = (editToolForm.value.name || '').trim().toLowerCase()
+  if (!q) return TOOL_OPTIONS.slice(0, 4)
+  return TOOL_OPTIONS.filter(opt => opt.toLowerCase().includes(q))
+})
+
+const selectMedSuggestion = (opt) => { addMedicineForm.value.name = opt; showMedSuggestions.value = false }
+const selectToolSuggestion = (opt) => { addToolForm.value.name = opt; showToolSuggestions.value = false }
+const selectEditMedSuggestion = (opt) => { editMedicineForm.value.name = opt; showEditMedSuggestions.value = false }
+const selectEditToolSuggestion = (opt) => { editToolForm.value.name = opt; showEditToolSuggestions.value = false }
+
+const blurMedSuggestions = () => { setTimeout(() => { showMedSuggestions.value = false }, 200) }
+const blurToolSuggestions = () => { setTimeout(() => { showToolSuggestions.value = false }, 200) }
+const blurEditMedSuggestions = () => { setTimeout(() => { showEditMedSuggestions.value = false }, 200) }
+const blurEditToolSuggestions = () => { setTimeout(() => { showEditToolSuggestions.value = false }, 200) }
+
 const confirmAddTool = async () => {
   const toolName = addToolName.value
   if (!toolName || !(addToolForm.value.quantity > 0)) { toast.warning('Please provide a valid name and quantity.'); return }
@@ -664,12 +705,12 @@ onMounted(async () => {
         <div class="hs-modal-header"><h3>Add New Tool</h3><button class="hs-modal-close" @click="showAddToolModal = false">&times;</button></div>
         <div class="hs-modal-body">
           <form @submit.prevent="confirmAddTool">
-            <div class="hs-form-group">
+            <div class="hs-form-group inv-suggest-wrap">
               <label class="hs-label">Tool Name</label>
-              <input v-model="addToolForm.name" class="hs-input" list="tool-suggestions" placeholder="Type tool name..." autocomplete="off" />
-              <datalist id="tool-suggestions">
-                <option v-for="opt in TOOL_OPTIONS" :key="opt" :value="opt" />
-              </datalist>
+              <input v-model="addToolForm.name" class="hs-input" placeholder="Type tool name..." autocomplete="off" @focus="showToolSuggestions = true" @input="showToolSuggestions = true" @blur="blurToolSuggestions" />
+              <div v-if="showToolSuggestions && filteredToolSuggestions.length" class="inv-suggest-dropdown">
+                <div v-for="opt in filteredToolSuggestions" :key="opt" class="inv-suggest-item" @mousedown.prevent="selectToolSuggestion(opt)">{{ opt }}</div>
+              </div>
             </div>
             <div class="hs-form-group"><label class="hs-label">Initial Quantity</label><input v-model.number="addToolForm.quantity" type="number" class="hs-input" min="1" /></div>
             <div class="hs-modal-footer hs-modal-footer--flat"><button type="button" class="hs-btn hs-btn-secondary" @click="showAddToolModal = false">Cancel</button><button type="submit" class="hs-btn hs-btn-primary"><span class="mdi mdi-plus"></span> Add Tool</button></div>
@@ -684,12 +725,12 @@ onMounted(async () => {
         <div class="hs-modal-header"><h3>Add New Medicine</h3><button class="hs-modal-close" @click="showAddMedicineModal = false">&times;</button></div>
         <div class="hs-modal-body">
           <form @submit.prevent="confirmAddMedicine">
-            <div class="hs-form-group">
+            <div class="hs-form-group inv-suggest-wrap">
               <label class="hs-label">Medicine Name</label>
-              <input v-model="addMedicineForm.name" class="hs-input" list="medicine-suggestions" placeholder="Type medicine name..." autocomplete="off" />
-              <datalist id="medicine-suggestions">
-                <option v-for="opt in MEDICINE_OPTIONS" :key="opt" :value="opt" />
-              </datalist>
+              <input v-model="addMedicineForm.name" class="hs-input" placeholder="Type medicine name..." autocomplete="off" @focus="showMedSuggestions = true" @input="showMedSuggestions = true" @blur="blurMedSuggestions" />
+              <div v-if="showMedSuggestions && filteredMedicineSuggestions.length" class="inv-suggest-dropdown">
+                <div v-for="opt in filteredMedicineSuggestions" :key="opt" class="inv-suggest-item" @mousedown.prevent="selectMedSuggestion(opt)">{{ opt }}</div>
+              </div>
             </div>
             <div class="hs-form-row">
               <div class="hs-form-group"><label class="hs-label">Initial Quantity</label><input v-model.number="addMedicineForm.quantity" type="number" class="hs-input" min="1" /></div>
@@ -707,7 +748,12 @@ onMounted(async () => {
         <div class="hs-modal-header"><h3>Edit Medicine</h3><button class="hs-modal-close" @click="showEditMedicineModal = false">&times;</button></div>
         <div class="hs-modal-body">
           <form @submit.prevent="confirmEditMedicine">
-            <div class="hs-form-group"><label class="hs-label">Medicine Name</label><input v-model="editMedicineForm.name" class="hs-input" /></div>
+            <div class="hs-form-group inv-suggest-wrap"><label class="hs-label">Medicine Name</label>
+              <input v-model="editMedicineForm.name" class="hs-input" autocomplete="off" @focus="showEditMedSuggestions = true" @input="showEditMedSuggestions = true" @blur="blurEditMedSuggestions" />
+              <div v-if="showEditMedSuggestions && filteredEditMedSuggestions.length" class="inv-suggest-dropdown">
+                <div v-for="opt in filteredEditMedSuggestions" :key="opt" class="inv-suggest-item" @mousedown.prevent="selectEditMedSuggestion(opt)">{{ opt }}</div>
+              </div>
+            </div>
             <div class="hs-form-row">
               <div class="hs-form-group"><label class="hs-label">Quantity</label><input v-model.number="editMedicineForm.quantity" type="number" class="hs-input" min="0" /></div>
               <div class="hs-form-group"><label class="hs-label">Expiration Date</label><input v-model="editMedicineForm.expiration" type="date" class="hs-input" /></div>
@@ -724,7 +770,12 @@ onMounted(async () => {
         <div class="hs-modal-header"><h3>Edit Tool</h3><button class="hs-modal-close" @click="showEditToolModal = false">&times;</button></div>
         <div class="hs-modal-body">
           <form @submit.prevent="confirmEditTool">
-            <div class="hs-form-group"><label class="hs-label">Tool Name</label><input v-model="editToolForm.name" class="hs-input" /></div>
+            <div class="hs-form-group inv-suggest-wrap"><label class="hs-label">Tool Name</label>
+              <input v-model="editToolForm.name" class="hs-input" autocomplete="off" @focus="showEditToolSuggestions = true" @input="showEditToolSuggestions = true" @blur="blurEditToolSuggestions" />
+              <div v-if="showEditToolSuggestions && filteredEditToolSuggestions.length" class="inv-suggest-dropdown">
+                <div v-for="opt in filteredEditToolSuggestions" :key="opt" class="inv-suggest-item" @mousedown.prevent="selectEditToolSuggestion(opt)">{{ opt }}</div>
+              </div>
+            </div>
             <div class="hs-form-group"><label class="hs-label">Quantity</label><input v-model.number="editToolForm.quantity" type="number" class="hs-input" min="0" /></div>
             <div class="hs-modal-footer hs-modal-footer--flat"><button type="button" class="hs-btn hs-btn-secondary" @click="showEditToolModal = false">Cancel</button><button type="submit" class="hs-btn hs-btn-primary"><span class="mdi mdi-content-save"></span> Save Changes</button></div>
           </form>
@@ -803,6 +854,20 @@ onMounted(async () => {
 <style scoped>
 .service-page { max-width: var(--hs-content-max-width); }
 .inv-stat--alert { border-color: var(--hs-danger-bg); background: var(--hs-danger-bg); }
+
+/* Custom suggestion dropdown */
+.inv-suggest-wrap { position: relative; }
+.inv-suggest-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+  background: var(--hs-white); border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-md); box-shadow: var(--hs-shadow-md);
+  max-height: 200px; overflow-y: auto; margin-top: 4px;
+}
+.inv-suggest-item {
+  padding: 8px 12px; font-size: var(--hs-font-size-sm); color: var(--hs-gray-700);
+  cursor: pointer; transition: background 100ms;
+}
+.inv-suggest-item:hover { background: var(--hs-gray-50); }
 
 .inv-year-filter { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .inv-year-label { font-size: var(--hs-font-size-sm); font-weight: 500; color: var(--hs-gray-600); display: flex; align-items: center; gap: 4px; }

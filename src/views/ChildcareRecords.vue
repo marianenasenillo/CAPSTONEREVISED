@@ -2,6 +2,7 @@
 import ChildcareExport from '@/components/reports/ChildcareExport.vue'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import { calculateAge } from '@/utils/ageClassification'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { ref, onMounted, computed, watch } from 'vue'
@@ -309,7 +310,10 @@ const exportreportPdf = async () => {
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Child Care / Records</div>
-        <h1>Vitamin A Supplementation Records <span class="hs-badge hs-badge-info">As of {{ selectedYear }}</span></h1>
+        <div class="hs-page-header-title-row">
+          <h1>Vitamin A Supplementation Records</h1>
+          <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ selectedYear }}</div>
+        </div>
         <p class="hs-module-desc">View, edit, and manage childcare health records.</p>
       </div>
 
@@ -383,7 +387,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.suffix }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '—') }}</td>
                 <td>{{ record.birthdate }}</td>
                 <td>{{ sexDisplay(record.gender) }}</td>
                 <td>{{ record.motherName }}</td>

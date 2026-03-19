@@ -6,6 +6,7 @@ import { supabase } from '@/utils/supabase.js'
 import { calculateAge, getAgeGroupLabel } from '@/utils/ageClassification'
 import { useServiceDetection } from '@/composables/useServiceDetection'
 import { getEligibleServices } from '@/utils/serviceEligibility'
+import { usePagination } from '@/composables/usePagination'
 
 const toast = useToast()
 const router = useRouter()
@@ -476,33 +477,11 @@ const directoryAvailableYears = computed(() => {
   return [...years].sort((a, b) => b - a)
 })
 
-// Flat list of ALL members (including heads) with head info attached, sorted by purok or alpha
+// Flat list of members only (no heads) with head info attached, sorted by purok or alpha
 const allDirectoryMembers = computed(() => {
   const list = []
   const yr = directoryYear.value
   for (const h of directoryHeads.value) {
-    // Include the head themselves as a member entry
-    const headYear = h.created_at ? new Date(h.created_at).getFullYear() : yr
-    if (headYear === yr) {
-      list.push({
-        member_id: `head_${h.head_id}`,
-        head_id: h.head_id,
-        lastname: h.lastname,
-        firstname: h.firstname,
-        middlename: h.middlename || '',
-        suffix: h.suffix || '',
-        sex: h.sex,
-        age: h.age,
-        birthdate: h.birthdate,
-        civil_status: h.civil_status,
-        relationship: 'Head',
-        age_group: h.age_group || null,
-        created_at: h.created_at,
-        barangay: h.barangay,
-        _head: h,
-        _isHead: true,
-      })
-    }
     const members = directoryMembers.value[h.head_id] || []
     for (const m of members) {
       const mYear = m.created_at ? new Date(m.created_at).getFullYear() : yr
@@ -531,6 +510,10 @@ const filteredDirectoryMembers = computed(() => {
   const q = directorySearch.value.toLowerCase()
   return base.filter(m => `${m.lastname} ${m.firstname} ${m.middlename || ''} ${m._head.purok || ''}`.toLowerCase().includes(q))
 })
+
+const { paginatedData: paginatedDirectoryMembers, ...dirPagination } = usePagination(filteredDirectoryMembers)
+
+const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 
 const loadDirectory = async () => {
   loadingDirectory.value = true
@@ -660,7 +643,7 @@ const saveEditMember = async () => {
       toast.warning('First name and last name are required.')
       return
     }
-    const { member_id, created_at: _ca2, is_archived: _ia2, archived_at: _aa2, head_id: _hid, ...updates } = editMemberForm.value
+    const { member_id, created_at: _ca2, is_archived: _ia2, archived_at: _aa2, head_id: _hid, _head: _h, _isHead: _ih, ...updates } = editMemberForm.value
     // Normalize sex
     if (updates.sex === 'Male') updates.sex = 'M'
     else if (updates.sex === 'Female') updates.sex = 'F'
@@ -990,30 +973,67 @@ const saveQuickAddRecord = async () => {
           <p>{{ directorySearch ? 'No members found matching "' + directorySearch + '".' : 'No members found.' }}</p>
         </div>
 
-        <div v-else class="dir-list">
-          <div class="dir-search-count">{{ filteredDirectoryMembers.length }} member(s)</div>
-          <div v-for="item in filteredDirectoryMembers" :key="item.member_id" class="dir-member-row">
-            <div class="dir-member-icon"><span :class="item._isHead ? 'mdi mdi-account-star' : 'mdi mdi-account'"></span></div>
-            <div class="dir-member-info">
-              <strong>{{ item.lastname }}, {{ item.firstname }} {{ item.middlename || '' }}</strong>
-              <span v-if="item._isHead" class="dir-head-badge">Head</span>
-              <span class="dir-member-meta">
-                {{ (item.sex === 'M' ? 'Male' : item.sex === 'F' ? 'Female' : item.sex) || '—' }} &bull; Age: {{ item.age ?? '—' }} &bull; {{ item.relationship || '—' }} &bull; {{ item.civil_status || '—' }}
-                <span v-if="item.age_group" class="dir-age-group-badge">{{ item.age_group }}</span>
-                <span v-if="item.age >= 10 && item.age <= 19" class="dir-deworming-note"><span class="mdi mdi-medical-bag"></span> Eligible for Deworming</span>
-              </span>
-              <span class="dir-member-head-label">Purok: {{ item._head.purok || 'N/A' }} &bull; Head: {{ item._head.lastname }}, {{ item._head.firstname }}</span>
-            </div>
-            <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(item, 'member', item._head.purok)" title="Quick Add Record">
-              <span class="mdi mdi-plus-circle-outline"></span> Add Record
-            </button>
-            <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(item, item._head)" title="Edit">
-              <span class="mdi mdi-pencil-outline"></span>
-            </button>
-            <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(item, item._head)" title="View Details">
-              <span class="mdi mdi-eye-outline"></span>
-            </button>
+        <div v-else class="hs-card hs-card--flush">
+          <div class="hs-table-scroll">
+            <table class="hs-table">
+              <thead>
+                <tr>
+                  <th>Last Name</th>
+                  <th>First Name</th>
+                  <th>Middle Name</th>
+                  <th>Relationship</th>
+                  <th>Birthdate</th>
+                  <th>Age</th>
+                  <th>Sex</th>
+                  <th>Civil Status</th>
+                  <th>Purok</th>
+                  <th>Head</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in paginatedDirectoryMembers" :key="item.member_id">
+                  <td>{{ item.lastname }}</td>
+                  <td>{{ item.firstname }}</td>
+                  <td>{{ item.middlename || '—' }}</td>
+                  <td>{{ item.relationship || '—' }}</td>
+                  <td>{{ item.birthdate || '—' }}</td>
+                  <td>{{ item.birthdate ? calculateAge(item.birthdate) : (item.age ?? '—') }}</td>
+                  <td>{{ sexDisplay(item.sex) }}</td>
+                  <td>{{ item.civil_status || '—' }}</td>
+                  <td>{{ item._head.purok || 'N/A' }}</td>
+                  <td>{{ item._head.lastname }}, {{ item._head.firstname }}</td>
+                  <td>
+                    <div class="bp-table-actions">
+                      <button class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openMemberDetail(item, item._head)" title="View Details">
+                        <span class="mdi mdi-eye-outline"></span>
+                      </button>
+                      <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-ghost" @click.stop="openEditMember(item, item._head)" title="Edit">
+                        <span class="mdi mdi-pencil-outline"></span>
+                      </button>
+                      <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-sm hs-btn-primary" @click.stop="openRecordSelector(item, 'member', item._head.purok)" title="Quick Add Record">
+                        <span class="mdi mdi-plus-circle-outline"></span> Add Record
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="filteredDirectoryMembers.length === 0">
+                  <td colspan="11" class="hs-table-empty">No members found.</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+        </div>
+
+        <!-- Pagination -->
+        <div v-if="dirPagination.totalPages.value > 1" class="hs-pagination">
+          <button class="hs-btn hs-btn-ghost hs-btn-sm" :disabled="dirPagination.currentPage.value === 1" @click="dirPagination.prevPage()">
+            <span class="mdi mdi-chevron-left"></span>
+          </button>
+          <span class="hs-pagination-info">Page {{ dirPagination.currentPage.value }} of {{ dirPagination.totalPages.value }}</span>
+          <button class="hs-btn hs-btn-ghost hs-btn-sm" :disabled="dirPagination.currentPage.value >= dirPagination.totalPages.value" @click="dirPagination.nextPage()">
+            <span class="mdi mdi-chevron-right"></span>
+          </button>
         </div>
       </div>
 
@@ -1824,7 +1844,7 @@ const saveQuickAddRecord = async () => {
             <div class="prof-detail-field"><span class="prof-detail-label">Purok</span><span class="prof-detail-value">{{ headDetailItem.purok || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Sex</span><span class="prof-detail-value">{{ headDetailItem.sex === 'M' ? 'Male' : headDetailItem.sex === 'F' ? 'Female' : headDetailItem.sex || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Birthdate</span><span class="prof-detail-value">{{ fmtDetailDate(headDetailItem.birthdate) }}</span></div>
-            <div class="prof-detail-field"><span class="prof-detail-label">Age</span><span class="prof-detail-value">{{ headDetailItem.age ?? '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Age</span><span class="prof-detail-value">{{ headDetailItem.birthdate ? calculateAge(headDetailItem.birthdate) : (headDetailItem.age ?? '—') }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Civil Status</span><span class="prof-detail-value">{{ headDetailItem.civil_status || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Contact Number</span><span class="prof-detail-value">{{ headDetailItem.contact_number || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Occupation</span><span class="prof-detail-value">{{ headDetailItem.occupation || '—' }}</span></div>
@@ -1864,7 +1884,7 @@ const saveQuickAddRecord = async () => {
             <div class="prof-detail-field"><span class="prof-detail-label">Barangay</span><span class="prof-detail-value">{{ memberDetailItem.barangay || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Sex</span><span class="prof-detail-value">{{ memberDetailItem.sex === 'M' ? 'Male' : memberDetailItem.sex === 'F' ? 'Female' : memberDetailItem.sex || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Birthdate</span><span class="prof-detail-value">{{ fmtDetailDate(memberDetailItem.birthdate) }}</span></div>
-            <div class="prof-detail-field"><span class="prof-detail-label">Age</span><span class="prof-detail-value">{{ memberDetailItem.age ?? '—' }}</span></div>
+            <div class="prof-detail-field"><span class="prof-detail-label">Age</span><span class="prof-detail-value">{{ memberDetailItem.birthdate ? calculateAge(memberDetailItem.birthdate) : (memberDetailItem.age ?? '—') }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Civil Status</span><span class="prof-detail-value">{{ memberDetailItem.civil_status || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Education</span><span class="prof-detail-value">{{ memberDetailItem.education || '—' }}</span></div>
             <div class="prof-detail-field"><span class="prof-detail-label">Religion</span><span class="prof-detail-value">{{ memberDetailItem.religion || '—' }}</span></div>

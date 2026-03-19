@@ -2,6 +2,7 @@
 import DashboardView from '@/components/DashboardView.vue'
 import FpsExport from '@/components/reports/FpsExport.vue'
 import html2canvas from 'html2canvas'
+import { calculateAge } from '@/utils/ageClassification'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import jsPDF from 'jspdf'
@@ -337,7 +338,10 @@ const exportreportPdf = async () => {
     <div class="service-page">
       <div class="hs-page-header">
         <div class="hs-breadcrumb">Dashboard / Family Planning / Records</div>
-        <h1>Responsible Parenthood Records <span class="hs-badge hs-badge-info">As of {{ selectedYear }}</span></h1>
+        <div class="hs-page-header-title-row">
+          <h1>Responsible Parenthood Records</h1>
+          <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ selectedYear }}</div>
+        </div>
       </div>
 
       <div class="hs-toolbar">
@@ -397,7 +401,7 @@ const exportreportPdf = async () => {
                 <td>{{ record.mother_name }}</td>
                 <td>{{ sexDisplay(record.sex) }}</td>
                 <td>{{ record.birthday }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.birthday ? calculateAge(record.birthday) : (record.age ?? '—') }}</td>
                 <td>
                   <v-menu :model-value="showActionsDropdown === record.id" @update:model-value="val => val ? showActionsDropdown = record.id : showActionsDropdown = null" offset-y>
                     <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>

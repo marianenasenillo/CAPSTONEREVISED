@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { supabase } from '@/utils/supabase.js'
 import { useToast } from '@/composables/useToast'
+import { calculateAge } from '@/utils/ageClassification'
 
 const router = useRouter()
 const toast = useToast()
@@ -198,7 +199,7 @@ const deleteRecord = async (record) => {
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.suffix }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '—') }}</td>
                 <td>{{ record.birthdate }}</td>
                 <td>{{ record.seStatus }}</td>
                 <td>{{ record.civilStatus }}</td>

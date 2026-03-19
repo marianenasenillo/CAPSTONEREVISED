@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { calculateAge } from '@/utils/ageClassification'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 import { usePagination } from '@/composables/usePagination'
@@ -173,7 +174,7 @@ const restoreRecord = async (record) => {
                 <td>{{ record.firstname }}</td>
                 <td>{{ record.middlename }}</td>
                 <td>{{ record.suffix }}</td>
-                <td>{{ record.age }}</td>
+                <td>{{ record.birthdate ? calculateAge(record.birthdate) : (record.age ?? '—') }}</td>
                 <td>{{ record.birthdate }}</td>
                 <td>{{ sexDisplay(record.gender) }}</td>
                 <td>{{ record.motherName }}</td>

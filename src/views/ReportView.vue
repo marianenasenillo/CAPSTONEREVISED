@@ -4,14 +4,18 @@ import ReportOne from '@/components/reports/ReportOne.vue'
 import ReportTwo from '@/components/reports/ReportTwo.vue'
 import ReportThree from '@/components/reports/ReportThree.vue'
 
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 
 const showReport = ref(false)
 const step = ref(1)
+const bulkExporting = ref(false)
 
 const reportRef = ref(null)
+const report1Ref = ref(null)
+const report2Ref = ref(null)
+const report3Ref = ref(null)
 
 const openReport = () => {
   showReport.value = true
@@ -93,6 +97,78 @@ const exportPdf = async () => {
   element.style.overflow = originalOverflow
   element.style.maxHeight = originalMaxHeight
 }
+
+const captureElement = async (element) => {
+  const origOverflow = element.style.overflow
+  const origMaxHeight = element.style.maxHeight
+  element.style.overflow = 'visible'
+  element.style.maxHeight = 'none'
+
+  const excludeEls = element.querySelectorAll('.exclude-from-pdf')
+  const origDisplays = []
+  excludeEls.forEach(el => { origDisplays.push(el.style.display); el.style.display = 'none' })
+
+  const logos = element.querySelectorAll('img[alt="Province Logo"], img[alt="Barangay Logo"]')
+  const origSizes = []
+  const origMargins = []
+  logos.forEach(img => {
+    origSizes.push(img.style.height)
+    img.style.height = '80px'
+    if (img.alt === 'Province Logo') {
+      origMargins.push(img.style.right)
+      img.style.position = 'relative'
+      img.style.right = '-130px'
+    }
+  })
+
+  const canvas = await html2canvas(element, { scale: 2, useCORS: true })
+
+  logos.forEach((img, i) => {
+    img.style.height = origSizes[i]
+    if (img.alt === 'Province Logo') { img.style.right = origMargins[i] || ''; img.style.position = '' }
+  })
+  excludeEls.forEach((el, i) => { el.style.display = origDisplays[i] })
+  element.style.overflow = origOverflow
+  element.style.maxHeight = origMaxHeight
+
+  return canvas
+}
+
+const bulkExportPdf = async () => {
+  bulkExporting.value = true
+  await nextTick()
+  await new Promise(r => setTimeout(r, 1500))
+
+  const refs = [report1Ref.value, report2Ref.value, report3Ref.value]
+  const pdf = new jsPDF('p', 'mm', 'a4')
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 10
+  const usableHeight = pageHeight - 2 * margin
+
+  for (let i = 0; i < refs.length; i++) {
+    if (!refs[i]) continue
+    const canvas = await captureElement(refs[i])
+    const imgData = canvas.toDataURL('image/png')
+
+    const pxPerMm = canvas.width / (pageWidth * (window.devicePixelRatio || 1))
+    const imgWidthMm = pageWidth - 2 * margin
+    const imgHeightMm = ((canvas.height / pxPerMm) / (window.devicePixelRatio || 1)) * (imgWidthMm / pageWidth)
+
+    if (i > 0) pdf.addPage()
+    let remainingHeight = imgHeightMm
+    let position = margin
+    while (remainingHeight > 0) {
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidthMm, imgHeightMm)
+      remainingHeight -= usableHeight
+      if (remainingHeight > 0) pdf.addPage()
+      position -= usableHeight
+    }
+  }
+
+  pdf.save('report-complete.pdf')
+  bulkExporting.value = false
+}
 </script>
 
 <template>
@@ -120,12 +196,18 @@ const exportPdf = async () => {
               <button v-if="step > 1" class="hs-btn hs-btn-secondary" @click="prevStep"><span class="mdi mdi-chevron-left"></span> Previous</button>
               <button v-if="step < 3" class="hs-btn hs-btn-secondary" @click="nextStep">Next <span class="mdi mdi-chevron-right"></span></button>
               <button class="hs-btn hs-btn-primary" @click="exportPdf"><span class="mdi mdi-download"></span> Export PDF</button>
+              <button class="hs-btn hs-btn-primary" @click="bulkExportPdf" :disabled="bulkExporting"><span class="mdi mdi-file-export-outline"></span> {{ bulkExporting ? 'Exporting...' : 'Export All Pages' }}</button>
             </div>
           </div>
           <div ref="reportRef" class="report-container">
             <ReportOne v-if="step === 1" @next="nextStep" />
             <ReportTwo v-else-if="step === 2" @next="nextStep" @prev="prevStep" />
             <ReportThree v-else-if="step === 3" @prev="prevStep" />
+          </div>
+          <div v-if="bulkExporting" class="bulk-export-container">
+            <div ref="report1Ref"><ReportOne /></div>
+            <div ref="report2Ref"><ReportTwo /></div>
+            <div ref="report3Ref"><ReportThree /></div>
           </div>
         </div>
       </div>
@@ -138,5 +220,6 @@ const exportPdf = async () => {
 .report-wrapper { background: var(--hs-white); border-radius: var(--hs-radius-lg); max-width: 1200px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 24px; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: var(--hs-space-2); }
 .report-container { max-width: 1100px; margin: 0 auto; }
+.bulk-export-container { position: absolute; left: -9999px; top: 0; width: 1100px; }
 @media print { .report-actions { display: none; } }
 </style>
