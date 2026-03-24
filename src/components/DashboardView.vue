@@ -307,7 +307,6 @@ const navRecords = [
   { label: 'WRA Records', icon: 'mdi-file-account-outline', path: '/maternalwrarecords' },
   { label: 'Cervical Screening', icon: 'mdi-file-chart-outline', path: '/maternalccsrecords' },
   { label: 'Child Care Records', icon: 'mdi-file-document-outline', path: '/childcarerecords' },
-  { label: 'Family Planning Records', icon: 'mdi-file-account-outline', path: '/fpsrecords' },
   { label: 'Deworming Records', icon: 'mdi-file-document-outline', path: '/phsrecords' },
 ]
 

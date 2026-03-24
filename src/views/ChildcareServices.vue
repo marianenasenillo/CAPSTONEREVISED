@@ -49,8 +49,8 @@ const saveVitaminaRecord = async () => {
       firstname: firstname.value,
       middlename: middlename.value,
       suffix: suffix.value,
-      age: age.value,
-      birthdate: birthdate.value,
+      age: age.value !== '' ? parseInt(age.value) : null,
+      birthdate: birthdate.value || null,
       gender: gender.value,
       mother_name: motherName.value
     }])

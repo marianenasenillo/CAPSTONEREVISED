@@ -289,13 +289,6 @@ onMounted(async () => {
               <p>Vitamin A supplementation program for children ages 1-4</p>
             </div>
             <div class="public-program-card">
-              <div class="public-program-icon" style="background: #f3e5f5; color: #6a1b9a;">
-                <span class="mdi mdi-account-heart"></span>
-              </div>
-              <h3>Family Planning</h3>
-              <p>Responsible parenthood and family planning services</p>
-            </div>
-            <div class="public-program-card">
               <div class="public-program-icon" style="background: #fff3e0; color: #e65100;">
                 <span class="mdi mdi-shield-plus"></span>
               </div>

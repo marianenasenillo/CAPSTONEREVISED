@@ -146,7 +146,6 @@ async function loadEnrolledRecords() {
     { table: 'deworming_records', fnCol: 'firstname', lnCol: 'lastname' },
     { table: 'wra_records', fnCol: 'firstname', lnCol: 'lastname' },
     { table: 'cervical_screening_records', fnCol: 'firstname', lnCol: 'lastname' },
-    { table: 'family_planning_records', fnCol: 'firstname', lnCol: 'surname' },
   ]
 
   const queries = tableConfigs.map(async ({ table, fnCol, lnCol }) => {
@@ -218,6 +217,26 @@ function getEligibilityReasons(rule, member) {
   }
 
   return reasons
+}
+
+async function deleteEnrolledRecord(member, svc) {
+  const rule = SERVICE_ELIGIBILITY_RULES.find(r => r.key === svc.key)
+  if (!rule) return
+  const table = rule.table
+  if (!confirm(`Remove ${member.firstname} ${member.lastname} from ${rule.label}? This will delete their record from ${table}.`)) return
+  try {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .ilike('firstname', member.firstname.trim())
+      .ilike('lastname', member.lastname.trim())
+    if (error) throw error
+    toast.success(`Removed from ${rule.label}`)
+    await loadEnrolledRecords()
+  } catch (err) {
+    console.error('Failed to delete enrolled record:', err)
+    toast.error('Failed to delete: ' + (err.message || err))
+  }
 }
 
 onMounted(loadMembers)
@@ -331,6 +350,9 @@ onMounted(loadMembers)
                     <span class="se-tag-label">{{ svc.label }}</span>
                     <span v-if="isAlreadyEnrolled(m, svc)" class="se-tag-check">
                       <span class="mdi mdi-check-circle"></span>
+                    </span>
+                    <span v-if="isAlreadyEnrolled(m, svc)" class="se-tag-delete" title="Remove record" @click.stop="deleteEnrolledRecord(m, svc)">
+                      <span class="mdi mdi-close-circle"></span>
                     </span>
                     <span v-else class="se-tag-info" :title="'Why eligible?'" @click.stop="showServiceInfo($event, svc, m)">
                       <span class="mdi mdi-information-outline"></span>
@@ -540,6 +562,24 @@ onMounted(loadMembers)
 }
 .se-tag-check .mdi {
   font-size: 12px;
+}
+.se-tag-delete {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  opacity: 0;
+  cursor: pointer;
+  color: var(--hs-danger, #e53935);
+  transition: opacity 0.15s;
+}
+.se-tag-delete .mdi {
+  font-size: 12px;
+}
+.se-service-tag:hover .se-tag-delete {
+  opacity: 0.7;
+}
+.se-tag-delete:hover {
+  opacity: 1 !important;
 }
 .se-service-tag .mdi {
   font-size: 13px;

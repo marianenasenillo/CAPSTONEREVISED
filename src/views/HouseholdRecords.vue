@@ -121,11 +121,28 @@ const saveNewMember = async () => {
     }
     showAddMemberModal.value = false
     memberDetection.resetDetection()
-    if (selectedHead.value) await viewMembers(selectedHead.value)
+    if (selectedHead.value) {
+      await recalcPopulation(selectedHead.value.head_id)
+      await viewMembers(selectedHead.value)
+    }
   } catch (e) {
     console.error('[addMember] Error:', e?.code, e?.message, e)
     toast.error(`Error adding member: ${e?.message || e}`)
   }
+}
+
+// Recalculate population, male_count, female_count from members + head
+const recalcPopulation = async (head_id) => {
+  try {
+    const { data: head } = await supabase.from('household_heads').select('sex').eq('head_id', head_id).single()
+    const { data: mems } = await supabase.from('household_members').select('sex').eq('head_id', head_id).eq('is_archived', false)
+    const allPeople = [...(mems || [])]
+    if (head) allPeople.push({ sex: head.sex })
+    const population = allPeople.length
+    const male_count = allPeople.filter(p => p.sex === 'M' || p.sex === 'Male').length
+    const female_count = allPeople.filter(p => p.sex === 'F' || p.sex === 'Female').length
+    await supabase.from('household_heads').update({ population, male_count, female_count }).eq('head_id', head_id)
+  } catch (e) { console.error('recalcPopulation error:', e) }
 }
 
 const deleteMember = async (member) => {
@@ -138,7 +155,10 @@ const deleteMember = async (member) => {
     if (error) throw error
 
     toast.success('Member deleted successfully.')
-    if (selectedHead.value) await viewMembers(selectedHead.value)
+    if (selectedHead.value) {
+      await recalcPopulation(selectedHead.value.head_id)
+      await viewMembers(selectedHead.value)
+    }
   } catch (e) {
     console.error(e)
     toast.error('Error deleting member: ' + (e.message || e))
@@ -155,7 +175,10 @@ const archiveMember = async (member) => {
     if (error) throw error
 
     toast.success('Member archived successfully.')
-    if (selectedHead.value) await viewMembers(selectedHead.value)
+    if (selectedHead.value) {
+      await recalcPopulation(selectedHead.value.head_id)
+      await viewMembers(selectedHead.value)
+    }
   } catch (e) {
     console.error(e)
     toast.error('Error archiving member: ' + (e.message || e))
@@ -418,9 +441,6 @@ const saveEdit = async () => {
       contact_number: editHead.value.contact_number || null,
       occupation: editHead.value.occupation || null,
       no_of_families: editHead.value.no_of_families,
-      population: editHead.value.population,
-      female_count: editHead.value.female_count,
-      male_count: editHead.value.male_count
     }
 
     const { error } = await supabase
@@ -627,7 +647,7 @@ const exportreportPdf = async () => {
         </div>
       </div>
 
-      <div v-if="selectedIds.length > 0" class="hs-batch-bar">
+      <div v-if="selectedIds.length > 0 && userRole === 'BHW'" class="hs-batch-bar">
         <span class="hs-batch-count">{{ selectedIds.length }} selected</span>
         <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Remove Selected</button>
         <button class="hs-btn hs-btn-sm hs-btn-ghost" @click="selectedIds = []"><span class="mdi mdi-close"></span> Clear</button>
@@ -685,7 +705,7 @@ const exportreportPdf = async () => {
                     <v-list>
                       <v-list-item @click="viewMembers(record)">View Members</v-list-item>
                       <v-list-item v-if="userRole === 'BHW'" @click="editRecord(record)">Edit</v-list-item>
-                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW'" @click="deleteRecord(record)">Delete</v-list-item>
                     </v-list>
                   </v-menu>
                 </td>
@@ -783,7 +803,7 @@ const exportreportPdf = async () => {
                         <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-primary hs-btn-sm" @click="editMemberRecord(m)" title="Edit">
                           <span class="mdi mdi-pencil-outline"></span>
                         </button>
-                        <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-danger hs-btn-sm" @click="deleteMember(m)" title="Delete">
+                        <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-danger hs-btn-sm" @click="deleteMember(m)" title="Delete">
                           <span class="mdi mdi-delete-outline"></span>
                         </button>
                       </div>
@@ -1288,16 +1308,16 @@ const exportreportPdf = async () => {
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
-                  <label class="hs-label">Population</label>
-                  <input v-model.number="editHead.population" type="number" class="hs-input">
+                  <label class="hs-label">Population <small>(auto-calculated)</small></label>
+                  <input :value="editHead.population" type="number" class="hs-input hs-input--readonly" readonly>
                 </div>
                 <div class="hs-form-group">
-                  <label class="hs-label">Female Count</label>
-                  <input v-model.number="editHead.female_count" type="number" class="hs-input">
+                  <label class="hs-label">Female Count <small>(auto-calculated)</small></label>
+                  <input :value="editHead.female_count" type="number" class="hs-input hs-input--readonly" readonly>
                 </div>
                 <div class="hs-form-group">
-                  <label class="hs-label">Male Count</label>
-                  <input v-model.number="editHead.male_count" type="number" class="hs-input">
+                  <label class="hs-label">Male Count <small>(auto-calculated)</small></label>
+                  <input :value="editHead.male_count" type="number" class="hs-input hs-input--readonly" readonly>
                 </div>
               </div>
               <div class="hs-modal-footer hs-modal-footer--flat">

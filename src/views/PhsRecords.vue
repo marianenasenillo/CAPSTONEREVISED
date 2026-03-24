@@ -171,9 +171,9 @@ const saveEdit = async () => {
         firstname: editRecord.value.firstname,
         middlename: editRecord.value.middlename,
         mother_name: editRecord.value.mother_name,
-        sex: editRecord.value.sex,
-        birthday: editRecord.value.birthday,
-        age: editRecord.value.age,
+        sex: editRecord.value.sex || null,
+        birthday: editRecord.value.birthday || null,
+        age: editRecord.value.age !== '' && editRecord.value.age != null ? parseInt(editRecord.value.age) : null,
         purok: editRecord.value.purok
       })
       .eq('id', editRecord.value.id)
@@ -402,7 +402,7 @@ const exportreportPdf = async () => {
       </div>
 
       <!-- Batch action bar -->
-      <div v-if="selectedIds.length > 0" class="hs-batch-bar">
+      <div v-if="selectedIds.length > 0 && userRole === 'BHW'" class="hs-batch-bar">
         <span class="hs-batch-count">{{ selectedIds.length }} selected</span>
         <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Remove Selected</button>
         <button class="hs-btn hs-btn-sm hs-btn-ghost" @click="selectedIds = []"><span class="mdi mdi-close"></span> Clear</button>
@@ -443,7 +443,7 @@ const exportreportPdf = async () => {
                     <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>
                     <v-list>
                       <v-list-item v-if="userRole === 'BHW'" @click="editRecordFunc(record)">Edit</v-list-item>
-                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW'" @click="deleteRecord(record)">Delete</v-list-item>
                     </v-list>
                   </v-menu>
                 </td>

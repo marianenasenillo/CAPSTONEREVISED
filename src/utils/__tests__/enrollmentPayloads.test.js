@@ -66,16 +66,6 @@ function buildEnrollmentPayload(table, form) {
       birthdate: form.birthdate || null,
       screened: form.screened,
     }
-  } else if (table === 'family_planning_records') {
-    return {
-      purok: form.purok,
-      surname: form.lastname,
-      firstname: form.firstname,
-      sex: form.sex === 'Male' ? 'M' : form.sex === 'Female' ? 'F' : form.sex,
-      birthday: form.birthdate || null,
-      age: ageInt,
-      mother_name: form.mother_name,
-    }
   }
   return {}
 }
@@ -205,32 +195,6 @@ describe('Enrollment Payload: cervical_screening_records', () => {
   })
 })
 
-describe('Enrollment Payload: family_planning_records', () => {
-  it('uses "surname" (not "lastname")', () => {
-    const payload = buildEnrollmentPayload('family_planning_records', baseForm)
-    expect(payload).toHaveProperty('surname')
-    expect(payload.surname).toBe('Cruz')
-    expect(payload).not.toHaveProperty('lastname')
-  })
-
-  it('uses "birthday" (not "birthdate")', () => {
-    const payload = buildEnrollmentPayload('family_planning_records', baseForm)
-    expect(payload).toHaveProperty('birthday')
-    expect(payload).not.toHaveProperty('birthdate')
-  })
-
-  it('maps sex to M/F short form', () => {
-    const payload = buildEnrollmentPayload('family_planning_records', { ...baseForm, sex: 'Female' })
-    expect(payload.sex).toBe('F')
-  })
-
-  it('does NOT include middlename or suffix', () => {
-    const payload = buildEnrollmentPayload('family_planning_records', baseForm)
-    expect(payload).not.toHaveProperty('middlename')
-    expect(payload).not.toHaveProperty('suffix')
-  })
-})
-
 describe('Payload table mapping matches rules', () => {
   it('every rule table has a corresponding payload builder', () => {
     const supportedTables = [
@@ -238,7 +202,6 @@ describe('Payload table mapping matches rules', () => {
       'deworming_records',
       'wra_records',
       'cervical_screening_records',
-      'family_planning_records',
     ]
     for (const rule of SERVICE_ELIGIBILITY_RULES) {
       expect(supportedTables).toContain(rule.table)

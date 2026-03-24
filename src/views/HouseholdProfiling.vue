@@ -680,7 +680,6 @@ const savingQuickAdd = ref(false)
 const recordTypeOptions = [
   { value: 'wra', label: 'WRA Record', icon: 'mdi-human-female', desc: 'Women of Reproductive Age', table: 'wra_records' },
   { value: 'cervical', label: 'Cervical Screening', icon: 'mdi-shield-check', desc: 'Cervical Cancer Screening', table: 'cervical_screening_records' },
-  { value: 'familyplanning', label: 'Family Planning', icon: 'mdi-account-heart', desc: 'Family Planning Services', table: 'family_planning_records' },
   { value: 'childcare', label: 'Childcare (Vitamin A)', icon: 'mdi-baby-face-outline', desc: 'Vitamin A Supplementation', table: 'childcare_vitamina_records' },
   { value: 'deworming', label: 'Deworming', icon: 'mdi-medical-bag', desc: 'Preventive Health / Deworming', table: 'deworming_records' },
 ]
@@ -705,7 +704,6 @@ async function loadEnrolledRecords() {
     { table: 'deworming_records', fnCol: 'firstname', lnCol: 'lastname' },
     { table: 'wra_records', fnCol: 'firstname', lnCol: 'lastname' },
     { table: 'cervical_screening_records', fnCol: 'firstname', lnCol: 'lastname' },
-    { table: 'family_planning_records', fnCol: 'firstname', lnCol: 'surname' },
   ]
   const queries = tableConfigs.map(async ({ table, fnCol, lnCol }) => {
     try {
@@ -769,12 +767,6 @@ const proceedToForm = () => {
       age: p.age != null ? p.age : '', birthdate: p.birthdate || '',
       screened: ''
     }
-  } else if (selectedRecordType.value === 'familyplanning') {
-    quickAddForm.value = {
-      purok: purok, surname: p.lastname || '', firstname: p.firstname || '',
-      motherName: '', sex: p.sex || '', birthday: p.birthdate || '',
-      age: p.age != null ? p.age : ''
-    }
   } else if (selectedRecordType.value === 'childcare') {
     quickAddForm.value = {
       purok: purok, lastname: p.lastname || '', firstname: p.firstname || '',
@@ -796,7 +788,7 @@ const proceedToForm = () => {
 
 const saveQuickAddRecord = async () => {
   savingQuickAdd.value = true
-  const labels = { wra: 'WRA', cervical: 'Cervical Screening', familyplanning: 'Family Planning', childcare: 'Childcare', deworming: 'Deworming' }
+  const labels = { wra: 'WRA', cervical: 'Cervical Screening', childcare: 'Childcare', deworming: 'Deworming' }
   try {
     const f = quickAddForm.value
     let table, payload
@@ -822,14 +814,6 @@ const saveQuickAddRecord = async () => {
         age: f.age !== '' ? parseInt(f.age) : null,
         birthdate: f.birthdate || null, screened: f.screened
       }
-    } else if (selectedRecordType.value === 'familyplanning') {
-      table = 'family_planning_records'
-      payload = {
-        purok: f.purok, surname: f.surname, firstname: f.firstname,
-        mother_name: f.motherName, sex: normalizeSex(f.sex),
-        birthday: f.birthday || null,
-        age: f.age !== '' ? parseInt(f.age) : null
-      }
     } else if (selectedRecordType.value === 'childcare') {
       table = 'childcare_vitamina_records'
       payload = {
@@ -844,7 +828,7 @@ const saveQuickAddRecord = async () => {
       payload = {
         purok: f.purok, lastname: f.lastname, firstname: f.firstname,
         middlename: f.middlename, mother_name: f.motherName,
-        sex: f.sex, birthday: f.birthday || null,
+        sex: f.sex || null, birthday: f.birthday || null,
         age: f.age !== '' ? parseInt(f.age) : null
       }
     }
@@ -1085,7 +1069,6 @@ const saveQuickAddRecord = async () => {
             <h3>
               {{ selectedRecordType === 'wra' ? 'WRA Record' :
                  selectedRecordType === 'cervical' ? 'Cervical Screening' :
-                 selectedRecordType === 'familyplanning' ? 'Family Planning' :
                  selectedRecordType === 'childcare' ? 'Childcare (Vitamin A)' : 'Deworming' }}
               — Quick Add
             </h3>
@@ -1151,27 +1134,6 @@ const saveQuickAddRecord = async () => {
               <div class="hs-modal-footer hs-modal-footer--flat">
                 <button type="button" class="hs-btn hs-btn-secondary" @click="showQuickAddForm = false">Cancel</button>
                 <button type="submit" class="hs-btn hs-btn-primary" :disabled="savingQuickAdd"><span class="mdi mdi-content-save"></span> Save Cervical Record</button>
-              </div>
-            </form>
-
-            <!-- Family Planning Form -->
-            <form v-else-if="selectedRecordType === 'familyplanning'" @submit.prevent="saveQuickAddRecord">
-              <div class="hs-form-row">
-                <div class="hs-form-group"><label class="hs-label">Purok</label><input v-model="quickAddForm.purok" class="hs-input" /></div>
-                <div class="hs-form-group"><label class="hs-label">Surname</label><input v-model="quickAddForm.surname" class="hs-input" /></div>
-                <div class="hs-form-group"><label class="hs-label">First Name</label><input v-model="quickAddForm.firstname" class="hs-input" /></div>
-              </div>
-              <div class="hs-form-row">
-                <div class="hs-form-group"><label class="hs-label">Mother Name</label><input v-model="quickAddForm.motherName" class="hs-input" /></div>
-                <div class="hs-form-group"><label class="hs-label">Sex</label>
-                  <select v-model="quickAddForm.sex" class="hs-select"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>
-                </div>
-                <div class="hs-form-group"><label class="hs-label">Birthday</label><input v-model="quickAddForm.birthday" type="date" class="hs-input" /></div>
-                <div class="hs-form-group"><label class="hs-label">Age</label><input v-model.number="quickAddForm.age" type="number" class="hs-input" /></div>
-              </div>
-              <div class="hs-modal-footer hs-modal-footer--flat">
-                <button type="button" class="hs-btn hs-btn-secondary" @click="showQuickAddForm = false">Cancel</button>
-                <button type="submit" class="hs-btn hs-btn-primary" :disabled="savingQuickAdd"><span class="mdi mdi-content-save"></span> Save Family Planning Record</button>
               </div>
             </form>
 

@@ -137,7 +137,16 @@ const deleteRecord = async (record) => {
 }
 
 const editRecordFunc = (record) => {
-  editRecord.value = { ...record }
+  editRecord.value = {
+    ...record,
+    seStatus: record.se_status,
+    civilStatus: record.civil_status,
+    planoManganak: record.plano_manganak,
+    fbMethod: record.fb_method,
+    fbType: record.fb_type,
+    fbDate: record.fb_date,
+    changeMethod: record.change_method,
+  }
   showEditModal.value = true
 }
 
@@ -152,7 +161,7 @@ const saveEdit = async () => {
         middlename: editRecord.value.middlename,
         suffix: editRecord.value.suffix,
         age: editRecord.value.age,
-        birthdate: editRecord.value.birthdate,
+        birthdate: editRecord.value.birthdate || null,
         se_status: editRecord.value.seStatus,
         civil_status: editRecord.value.civilStatus,
         plano_manganak: editRecord.value.planoManganak,
@@ -163,7 +172,7 @@ const saveEdit = async () => {
         infecund: editRecord.value.infecund,
         fb_method: editRecord.value.fbMethod,
         fb_type: editRecord.value.fbType,
-        fb_date: editRecord.value.fbDate,
+        fb_date: editRecord.value.fbDate || null,
         change_method: editRecord.value.changeMethod
       })
       .eq('id', editRecord.value.id)
@@ -416,7 +425,7 @@ const exportreportPdf = async () => {
                     <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>
                     <v-list>
                       <v-list-item v-if="userRole === 'BHW'" @click="editRecordFunc(record)">Edit</v-list-item>
-                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW'" @click="deleteRecord(record)">Delete</v-list-item>
                       <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
                     </v-list>
                   </v-menu>

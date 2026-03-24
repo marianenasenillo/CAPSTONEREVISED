@@ -10,7 +10,6 @@ const HomeView = () => import('@/views/HomeView.vue')
 const HouseholdProfiling = () => import('@/views/HouseholdProfiling.vue')
 const MaternalServices = () => import('@/views/MaternalServices.vue')
 const ChildcareServices = () => import('@/views/ChildcareServices.vue')
-const FamilyPlanning = () => import('@/views/FamilyPlanning.vue')
 const PreventiveHealth = () => import('@/views/PreventiveHealth.vue')
 const Calendar = () => import('@/views/Calendar.vue')
 const Inventory = () => import('@/views/Inventory.vue')
@@ -19,7 +18,6 @@ const HouseholdRecords = () => import('@/views/HouseholdRecords.vue')
 const WraRecords = () => import('@/views/WraRecords.vue')
 const CervicalScreeningRecords = () => import('@/views/CervicalScreeningRecords.vue')
 const ChildcareRecords = () => import('@/views/ChildcareRecords.vue')
-const FamilyPlanningRecords = () => import('@/views/FamilyPlanningRecords.vue')
 const PreventiveHealthRecords = () => import('@/views/PreventiveHealthRecords.vue')
 const BhwRegistration = () => import('@/views/BhwRegistration.vue')
 const BhwManagement = () => import('@/views/BhwManagement.vue')
@@ -63,7 +61,6 @@ const router = createRouter({
         { path: 'householdprofile', name: 'householdprofiling', component: HouseholdProfiling },
         { path: 'maternalservices', name: 'maternalservices', component: MaternalServices, meta: { minRole: 'bhw' } },
         { path: 'childcare', name: 'childcare', component: ChildcareServices, meta: { minRole: 'bhw' } },
-        { path: 'familyplanning', name: 'familyplanning', component: FamilyPlanning, meta: { minRole: 'bhw' } },
         { path: 'preventivehealthservices', name: 'preventivehealthservices', component: PreventiveHealth, meta: { minRole: 'bhw' } },
 
         // Borrower & Patient Profiling
@@ -81,7 +78,6 @@ const router = createRouter({
         { path: 'maternalwrarecords', name: 'maternalwrarecords', component: WraRecords },
         { path: 'maternalccsrecords', name: 'maternalccsrecords', component: CervicalScreeningRecords },
         { path: 'childcarerecords', name: 'childcarerecords', component: ChildcareRecords },
-        { path: 'fpsrecords', name: 'fpsrecords', component: FamilyPlanningRecords },
         { path: 'phsrecords', name: 'phsrecords', component: PreventiveHealthRecords },
 
         // Administration (Admin)

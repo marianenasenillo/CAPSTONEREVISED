@@ -178,9 +178,9 @@ const saveEdit = async () => {
         surname: editRecord.value.surname,
         firstname: editRecord.value.firstname,
         mother_name: editRecord.value.mother_name,
-        sex: editRecord.value.sex,
-        birthday: editRecord.value.birthday,
-        age: editRecord.value.age,
+        sex: editRecord.value.sex || null,
+        birthday: editRecord.value.birthday || null,
+        age: editRecord.value.age !== '' && editRecord.value.age != null ? parseInt(editRecord.value.age) : null,
         purok: editRecord.value.purok
       })
       .eq('id', editRecord.value.id)

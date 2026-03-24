@@ -45,6 +45,7 @@ export async function listBorrowerProfiles(filters = {}) {
   let query = supabase
     .from('borrower_profiles')
     .select('*')
+    .eq('is_archived', false)
     .order('created_at', { ascending: false })
 
   if (filters.barangay) {
@@ -60,6 +61,17 @@ export async function listBorrowerProfiles(filters = {}) {
   }
 
   const { data, error } = await query
+  if (error) throw error
+  return data
+}
+
+export async function archiveBorrowerProfile(borrower_id) {
+  if (!borrower_id) throw new Error('borrower_id required')
+  const { data, error } = await supabase
+    .from('borrower_profiles')
+    .update({ is_archived: true, archived_at: new Date().toISOString() })
+    .eq('borrower_id', borrower_id)
+    .select()
   if (error) throw error
   return data
 }
@@ -99,15 +111,51 @@ export async function getBorrowerWithHistory(borrower_id) {
 export async function createMedicineTransaction({
   borrower_id,
   medicine_id,
+  medicine_name_manual = '',
   quantity,
   purpose = '',
   prescribed_by = '',
 }) {
   if (!borrower_id) throw new Error('borrower_id required')
-  if (!medicine_id) throw new Error('medicine_id required')
+  if (!medicine_id && !medicine_name_manual) throw new Error('medicine_id or medicine name required')
   quantity = Number(quantity)
   if (!quantity || quantity <= 0) throw new Error('quantity must be > 0')
 
+  // Look up borrower profile to populate recipient fields
+  let recipientName = null
+  let recipientPurok = null
+  const { data: bp, error: bpErr } = await supabase
+    .from('borrower_profiles')
+    .select('firstname, lastname, purok')
+    .eq('borrower_id', borrower_id)
+    .maybeSingle()
+  if (!bpErr && bp) {
+    recipientName = [bp.firstname, bp.lastname].filter(Boolean).join(' ') || null
+    recipientPurok = bp.purok || null
+  }
+
+  // Manual entry — no stock deduction
+  if (!medicine_id) {
+    const { data: tx, error: txErr } = await supabase
+      .from('medicine_transactions')
+      .insert({
+        borrower_id,
+        medicine_id: null,
+        medicine_name: medicine_name_manual.trim(),
+        quantity,
+        purpose,
+        prescribed_by,
+        transaction_type: 'request',
+        recipient_name: recipientName,
+        recipient_purok: recipientPurok,
+      })
+      .select()
+      .single()
+    if (txErr) throw txErr
+    return tx
+  }
+
+  // Existing inventory item — deduct stock
   const { data: med, error: medErr } = await supabase
     .from('medicine')
     .select('quantity, name')
@@ -128,19 +176,6 @@ export async function createMedicineTransaction({
   if (updErr) throw updErr
   if (!updated || updated.length === 0) {
     throw new Error('Failed to reserve stock (concurrent update)')
-  }
-
-  // Look up borrower profile to populate recipient fields
-  let recipientName = null
-  let recipientPurok = null
-  const { data: bp, error: bpErr } = await supabase
-    .from('borrower_profiles')
-    .select('firstname, lastname, purok')
-    .eq('borrower_id', borrower_id)
-    .maybeSingle()
-  if (!bpErr && bp) {
-    recipientName = [bp.firstname, bp.lastname].filter(Boolean).join(' ') || null
-    recipientPurok = bp.purok || null
   }
 
   const { data: tx, error: txErr } = await supabase
@@ -195,15 +230,52 @@ export async function listMedicineTransactions(filters = {}) {
 export async function createToolBorrowTransaction({
   borrower_id,
   tool_id,
+  tool_name_manual = '',
   quantity,
   purpose = '',
   expected_return_date = null,
 }) {
   if (!borrower_id) throw new Error('borrower_id required')
-  if (!tool_id) throw new Error('tool_id required')
+  if (!tool_id && !tool_name_manual) throw new Error('tool_id or tool name required')
   quantity = Number(quantity)
   if (!quantity || quantity <= 0) throw new Error('quantity must be > 0')
 
+  // Look up borrower profile to populate recipient fields
+  let recipientName = null
+  let recipientPurok = null
+  const { data: bp2, error: bp2Err } = await supabase
+    .from('borrower_profiles')
+    .select('firstname, lastname, purok')
+    .eq('borrower_id', borrower_id)
+    .maybeSingle()
+  if (!bp2Err && bp2) {
+    recipientName = [bp2.firstname, bp2.lastname].filter(Boolean).join(' ') || null
+    recipientPurok = bp2.purok || null
+  }
+
+  // Manual entry — no stock deduction
+  if (!tool_id) {
+    const { data: tx, error: txErr } = await supabase
+      .from('tool_transactions')
+      .insert({
+        borrower_id,
+        tool_id: null,
+        tool_name: tool_name_manual.trim(),
+        quantity,
+        purpose,
+        expected_return_date,
+        status: 'borrowed',
+        transaction_type: 'borrow',
+        recipient_name: recipientName,
+        recipient_purok: recipientPurok,
+      })
+      .select()
+      .single()
+    if (txErr) throw txErr
+    return tx
+  }
+
+  // Existing inventory item — deduct stock
   const { data: tool, error: toolErr } = await supabase
     .from('tools')
     .select('quantity, name')
@@ -224,19 +296,6 @@ export async function createToolBorrowTransaction({
   if (updErr) throw updErr
   if (!updated || updated.length === 0) {
     throw new Error('Failed to reserve stock (concurrent update)')
-  }
-
-  // Look up borrower profile to populate recipient fields
-  let recipientName = null
-  let recipientPurok = null
-  const { data: bp2, error: bp2Err } = await supabase
-    .from('borrower_profiles')
-    .select('firstname, lastname, purok')
-    .eq('borrower_id', borrower_id)
-    .maybeSingle()
-  if (!bp2Err && bp2) {
-    recipientName = [bp2.firstname, bp2.lastname].filter(Boolean).join(' ') || null
-    recipientPurok = bp2.purok || null
   }
 
   const { data: tx, error: txErr } = await supabase

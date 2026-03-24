@@ -49,6 +49,7 @@ const showAddBorrowerForm = ref(false)
 const medicineForm = ref({
   borrower_id: '',
   medicine_id: '',
+  medicine_name_manual: '',
   quantity: 1,
   purpose: '',
   prescribed_by: '',
@@ -57,9 +58,42 @@ const medicineForm = ref({
 const toolForm = ref({
   borrower_id: '',
   tool_id: '',
+  tool_name_manual: '',
   quantity: 1,
   purpose: '',
   expected_return_date: '',
+})
+
+// Suggestion dropdowns for medicine/tool manual entry
+const showMedSuggestions = ref(false)
+const showToolSuggestions = ref(false)
+const filteredMedSuggestions = computed(() => {
+  const q = (medicineForm.value.medicine_name_manual || '').trim().toLowerCase()
+  const available = medicines.value.filter(m => m.quantity > 0)
+  if (!q) return available.slice(0, 5)
+  return available.filter(m => m.name.toLowerCase().includes(q))
+})
+const filteredToolSuggestions = computed(() => {
+  const q = (toolForm.value.tool_name_manual || '').trim().toLowerCase()
+  const available = tools.value.filter(t => t.quantity > 0)
+  if (!q) return available.slice(0, 5)
+  return available.filter(t => t.name.toLowerCase().includes(q))
+})
+const selectMedSuggestion = (m) => { medicineForm.value.medicine_id = m.medicine_id; medicineForm.value.medicine_name_manual = m.name; showMedSuggestions.value = false }
+const selectToolSuggestion = (t) => { toolForm.value.tool_id = t.tool_id; toolForm.value.tool_name_manual = t.name; showToolSuggestions.value = false }
+const blurMedSuggestions = () => { setTimeout(() => { showMedSuggestions.value = false }, 200) }
+const blurToolSuggestions = () => { setTimeout(() => { showToolSuggestions.value = false }, 200) }
+
+// Clear medicine_id when user types a name that doesn't match any suggestion
+watch(() => medicineForm.value.medicine_name_manual, (val) => {
+  if (!val) { medicineForm.value.medicine_id = ''; return }
+  const match = medicines.value.find(m => m.name.toLowerCase() === val.trim().toLowerCase())
+  medicineForm.value.medicine_id = match ? match.medicine_id : ''
+})
+watch(() => toolForm.value.tool_name_manual, (val) => {
+  if (!val) { toolForm.value.tool_id = ''; return }
+  const match = tools.value.find(t => t.name.toLowerCase() === val.trim().toLowerCase())
+  toolForm.value.tool_id = match ? match.tool_id : ''
 })
 
 const addBorrowerForm = ref({
@@ -214,6 +248,7 @@ function openMedicineForm(borrower) {
   medicineForm.value = {
     borrower_id: borrower.borrower_id,
     medicine_id: '',
+    medicine_name_manual: '',
     quantity: 1,
     purpose: '',
     prescribed_by: userFullName.value || '',
@@ -223,15 +258,15 @@ function openMedicineForm(borrower) {
 
 async function submitMedicineRequest() {
   try {
-    if (!medicineForm.value.medicine_id) return toast.warning('Select a medicine')
+    const name = (medicineForm.value.medicine_name_manual || '').trim()
+    if (!medicineForm.value.medicine_id && !name) return toast.warning('Enter a medicine name or select from the list')
     if (!medicineForm.value.quantity || medicineForm.value.quantity < 1) return toast.warning('Quantity must be at least 1')
 
     await createMedicineTransaction(medicineForm.value)
     toast.success('Medicine provided successfully')
     showMedicineForm.value = false
-    // Notify Admin about medicine provision
-    const med = medicines.value.find(m => m.medicine_id === medicineForm.value.medicine_id)
-    notifyRole('Admin', { type: 'borrower_activity', title: `Medicine provided: ${med?.name || 'Unknown'}`, message: `Qty: ${medicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-success)', link: '/inventory' })
+    const displayName = name || medicines.value.find(m => m.medicine_id === medicineForm.value.medicine_id)?.name || 'Unknown'
+    notifyRole('Admin', { type: 'borrower_activity', title: `Medicine provided: ${displayName}`, message: `Qty: ${medicineForm.value.quantity}`, icon: 'mdi-pill', color: 'var(--hs-success)', link: '/inventory' })
     await Promise.all([loadData(), loadAnalytics()])
   } catch (err) {
     toast.error(err.message || 'Failed to provide medicine')
@@ -243,6 +278,7 @@ function openToolForm(borrower) {
   toolForm.value = {
     borrower_id: borrower.borrower_id,
     tool_id: '',
+    tool_name_manual: '',
     quantity: 1,
     purpose: '',
     expected_return_date: '',
@@ -252,15 +288,15 @@ function openToolForm(borrower) {
 
 async function submitToolBorrow() {
   try {
-    if (!toolForm.value.tool_id) return toast.warning('Select a tool')
+    const name = (toolForm.value.tool_name_manual || '').trim()
+    if (!toolForm.value.tool_id && !name) return toast.warning('Enter a tool name or select from the list')
     if (!toolForm.value.quantity || toolForm.value.quantity < 1) return toast.warning('Quantity must be at least 1')
 
     await createToolBorrowTransaction(toolForm.value)
     toast.success('Tool borrowed successfully')
     showToolForm.value = false
-    // Notify Admin about tool borrow
-    const tool = tools.value.find(t => t.tool_id === toolForm.value.tool_id)
-    notifyRole('Admin', { type: 'borrower_activity', title: `Tool borrowed: ${tool?.name || 'Unknown'}`, message: `Qty: ${toolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-warning)', link: '/inventory' })
+    const displayName = name || tools.value.find(t => t.tool_id === toolForm.value.tool_id)?.name || 'Unknown'
+    notifyRole('Admin', { type: 'borrower_activity', title: `Tool borrowed: ${displayName}`, message: `Qty: ${toolForm.value.quantity}`, icon: 'mdi-wrench', color: 'var(--hs-warning)', link: '/inventory' })
     await Promise.all([loadData(), loadAnalytics()])
   } catch (err) {
     toast.error(err.message || 'Failed to borrow tool')
@@ -281,11 +317,14 @@ async function handleReturnTool(tx) {
   }
 }
 
-// Delete borrower profile (not their medicine/tool transactions)
+// Soft-delete borrower profile — appears deleted in UI but data stays in DB for transaction history
 async function deleteBorrower(borrower) {
-  if (!confirm(`Delete borrower profile for ${borrower.firstname} ${borrower.lastname}? This will NOT delete their medicine/tool transaction history.`)) return
+  if (!confirm(`Delete borrower profile for ${borrower.firstname} ${borrower.lastname}?`)) return
   try {
-    const { error } = await supabase.from('borrower_profiles').delete().eq('borrower_id', borrower.borrower_id)
+    const { error } = await supabase
+      .from('borrower_profiles')
+      .update({ is_archived: true, archived_at: new Date().toISOString() })
+      .eq('borrower_id', borrower.borrower_id)
     if (error) throw error
     toast.success('Borrower profile deleted')
     await loadData()
@@ -340,7 +379,7 @@ onMounted(async () => {
         <span class="mdi mdi-swap-horizontal"></span> Active Borrows
       </button>
       <button class="hs-tab" :class="{ active: activeTab === 'analytics' }" @click="activeTab = 'analytics'">
-        <span class="mdi mdi-chart-bar"></span> Analytics
+        <span class="mdi mdi-chart-bar"></span> Report
       </button>
     </div>
 
@@ -690,14 +729,13 @@ onMounted(async () => {
           <button class="hs-btn-icon" @click="showMedicineForm = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="hs-modal-body">
-          <div class="hs-form-group">
+          <div class="hs-form-group bp-suggest-wrap">
             <label>Medicine *</label>
-            <select v-model="medicineForm.medicine_id" class="hs-input">
-              <option value="">— Select Medicine —</option>
-              <option v-for="m in medicines.filter(m => m.quantity > 0)" :key="m.medicine_id" :value="m.medicine_id">
-                {{ m.name }} ({{ m.quantity }} available)
-              </option>
-            </select>
+            <input v-model="medicineForm.medicine_name_manual" class="hs-input" placeholder="Type medicine name or select from list..." autocomplete="off" @focus="showMedSuggestions = true" @input="showMedSuggestions = true" @blur="blurMedSuggestions" />
+            <div v-if="showMedSuggestions && filteredMedSuggestions.length" class="bp-suggest-dropdown">
+              <div v-for="m in filteredMedSuggestions" :key="m.medicine_id" class="bp-suggest-item" @mousedown.prevent="selectMedSuggestion(m)">{{ m.name }} ({{ m.quantity }} available)</div>
+            </div>
+            <small v-if="!medicineForm.medicine_id && medicineForm.medicine_name_manual" class="bp-manual-hint">Manual entry — no stock deduction</small>
           </div>
           <div class="hs-form-group">
             <label>Quantity *</label>
@@ -729,14 +767,13 @@ onMounted(async () => {
           <button class="hs-btn-icon" @click="showToolForm = false"><span class="mdi mdi-close"></span></button>
         </div>
         <div class="hs-modal-body">
-          <div class="hs-form-group">
+          <div class="hs-form-group bp-suggest-wrap">
             <label>Tool *</label>
-            <select v-model="toolForm.tool_id" class="hs-input">
-              <option value="">— Select Tool —</option>
-              <option v-for="t in tools.filter(t => t.quantity > 0)" :key="t.tool_id" :value="t.tool_id">
-                {{ t.name }} ({{ t.quantity }} available)
-              </option>
-            </select>
+            <input v-model="toolForm.tool_name_manual" class="hs-input" placeholder="Type tool name or select from list..." autocomplete="off" @focus="showToolSuggestions = true" @input="showToolSuggestions = true" @blur="blurToolSuggestions" />
+            <div v-if="showToolSuggestions && filteredToolSuggestions.length" class="bp-suggest-dropdown">
+              <div v-for="t in filteredToolSuggestions" :key="t.tool_id" class="bp-suggest-item" @mousedown.prevent="selectToolSuggestion(t)">{{ t.name }} ({{ t.quantity }} available)</div>
+            </div>
+            <small v-if="!toolForm.tool_id && toolForm.tool_name_manual" class="bp-manual-hint">Manual entry — no stock deduction</small>
           </div>
           <div class="hs-form-group">
             <label>Quantity *</label>
@@ -811,6 +848,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* Suggestion dropdown for medicine/tool manual entry */
+.bp-suggest-wrap { position: relative; }
+.bp-suggest-dropdown { position: absolute; top: 100%; left: 0; right: 0; z-index: 100; background: var(--hs-white); border: 1px solid var(--hs-border); border-radius: 0 0 var(--hs-radius) var(--hs-radius); max-height: 180px; overflow-y: auto; box-shadow: var(--hs-shadow-md); }
+.bp-suggest-item { padding: 8px 12px; cursor: pointer; font-size: 0.92rem; }
+.bp-suggest-item:hover { background: var(--hs-gray-50); }
+.bp-manual-hint { color: var(--hs-warning); font-size: 0.8rem; margin-top: 2px; display: block; }
+
 /* Borrower Profiling Styles */
 .bp-table-name {
   display: flex;

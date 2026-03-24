@@ -221,9 +221,6 @@ const saveEdit = async () => {
         middlename: editHead.value.middlename,
         suffix: editHead.value.suffix,
         no_of_families: editHead.value.no_of_families,
-        population: editHead.value.population,
-        female_count: editHead.value.female_count,
-        male_count: editHead.value.male_count
       })
       .eq('head_id', editHead.value.head_id)
 
@@ -399,7 +396,7 @@ const exportreportPdf = async () => {
         </div>
       </div>
 
-      <div v-if="selectedIds.length > 0" class="hs-batch-bar">
+      <div v-if="selectedIds.length > 0 && userRole === 'BHW'" class="hs-batch-bar">
         <span class="hs-batch-count">{{ selectedIds.length }} selected</span>
         <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Remove Selected</button>
         <button class="hs-btn hs-btn-sm hs-btn-ghost" @click="selectedIds = []"><span class="mdi mdi-close"></span> Clear</button>
@@ -445,7 +442,7 @@ const exportreportPdf = async () => {
                     <v-list>
                       <v-list-item @click="viewMembers(record)">View Members</v-list-item>
                       <v-list-item v-if="userRole === 'BHW'" @click="editRecord(record)">Edit</v-list-item>
-                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW'" @click="deleteRecord(record)">Delete</v-list-item>
                     </v-list>
                   </v-menu>
                 </td>
@@ -580,18 +577,18 @@ const exportreportPdf = async () => {
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
-                  <label class="hs-label">Population</label>
-                  <input v-model.number="editHead.population" type="number" class="hs-input">
+                  <label class="hs-label">Population <small>(auto-calculated)</small></label>
+                  <input :value="editHead.population" type="number" class="hs-input hs-input--readonly" readonly>
                 </div>
                 <div class="hs-form-group">
-                  <label class="hs-label">Female Count</label>
-                  <input v-model.number="editHead.female_count" type="number" class="hs-input">
+                  <label class="hs-label">Female Count <small>(auto-calculated)</small></label>
+                  <input :value="editHead.female_count" type="number" class="hs-input hs-input--readonly" readonly>
                 </div>
               </div>
               <div class="hs-form-row">
                 <div class="hs-form-group">
-                  <label class="hs-label">Male Count</label>
-                  <input v-model.number="editHead.male_count" type="number" class="hs-input">
+                  <label class="hs-label">Male Count <small>(auto-calculated)</small></label>
+                  <input :value="editHead.male_count" type="number" class="hs-input hs-input--readonly" readonly>
                 </div>
               </div>
               <div class="hs-modal-footer" style="border:none;padding:var(--hs-space-4) 0 0;">

@@ -71,9 +71,9 @@ const saveRecord = async () => {
         firstname: firstname.value,
         middlename: middlename.value,
         mother_name: motherName.value,
-        sex: sex.value,
-        birthday: birthday.value,
-        age: age.value,
+        sex: sex.value || null,
+        birthday: birthday.value || null,
+        age: age.value !== '' ? parseInt(age.value) : null,
         lastname: lastname.value,
         purok: purok.value
       }

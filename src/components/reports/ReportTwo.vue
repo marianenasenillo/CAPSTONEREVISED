@@ -19,6 +19,10 @@ const purokPieChartData = ref({})
 
 const discussionText = ref('')
 
+let genderChart = null
+let purokBarChart = null
+let purokPieChart = null
+
 const reportingPeriod = computed(() => {
   const now = new Date()
   return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -37,174 +41,115 @@ onMounted(async () => {
   }
   selectedBarangay.value = userBarangay
 
-  await fetchGenderDistribution()
-  await fetchPurokComparison()
-  await fetchPurokPie()
-
+  await updateCharts()
   generateDiscussion()
+})
 
+const updateCharts = async () => {
+  // Fetch heads and members for the barangay
+  const [headRes, memberRes] = await Promise.all([
+    supabase.from('household_heads').select('head_id, sex, purok').eq('barangay', selectedBarangay.value).eq('is_archived', false),
+    supabase.from('household_members').select('head_id, sex, is_archived').eq('is_archived', false),
+  ])
+
+  const heads = headRes.data || []
+  const allMembers = memberRes.data || []
+  const headIds = new Set(heads.map(h => h.head_id))
+  const members = allMembers.filter(m => headIds.has(m.head_id))
+
+  // Gender distribution — count sex from heads + members
+  const allPeople = [
+    ...heads.map(h => h.sex),
+    ...members.map(m => m.sex),
+  ]
+  const totalMale = allPeople.filter(s => s === 'M' || s === 'Male').length
+  const totalFemale = allPeople.filter(s => s === 'F' || s === 'Female').length
+
+  genderChartData.value = {
+    labels: ['Male', 'Female'],
+    datasets: [{
+      label: 'Gender Distribution',
+      data: [totalMale, totalFemale],
+      backgroundColor: ['rgba(54, 162, 235, 0.6)', 'rgba(255, 99, 132, 0.6)'],
+      borderColor: ['rgba(54, 162, 235, 1)', 'rgba(255, 99, 132, 1)'],
+      borderWidth: 1,
+    }],
+  }
+
+  // Population per purok — count head + their members
+  const purokPop = {}
+  for (const h of heads) {
+    const key = h.purok || 'Unknown'
+    if (!purokPop[key]) purokPop[key] = 0
+    purokPop[key] += 1 // head
+    purokPop[key] += members.filter(m => m.head_id === h.head_id).length // members
+  }
+
+  const sortedPuroks = Object.keys(purokPop).sort()
+  const purokValues = sortedPuroks.map(k => purokPop[k])
+  const purokColors = ['rgba(255, 99, 132, 0.6)', 'rgba(54, 162, 235, 0.6)', 'rgba(255, 206, 86, 0.6)', 'rgba(75, 192, 192, 0.6)', 'rgba(153, 102, 255, 0.6)', 'rgba(255, 159, 64, 0.6)', 'rgba(99, 255, 132, 0.6)', 'rgba(162, 54, 235, 0.6)']
+  const purokBorders = purokColors.map(c => c.replace('0.6', '1'))
+
+  purokChartData.value = {
+    labels: sortedPuroks,
+    datasets: [{
+      label: 'Population',
+      data: purokValues,
+      backgroundColor: 'rgba(255, 206, 86, 0.6)',
+      borderColor: 'rgba(255, 206, 86, 1)',
+      borderWidth: 1,
+    }],
+  }
+
+  purokPieChartData.value = {
+    labels: sortedPuroks,
+    datasets: [{
+      label: 'Population',
+      data: purokValues,
+      backgroundColor: purokColors.slice(0, sortedPuroks.length),
+      borderColor: purokBorders.slice(0, sortedPuroks.length),
+      borderWidth: 1,
+    }],
+  }
+
+  // Destroy old charts
+  if (genderChart) genderChart.destroy()
+  if (purokBarChart) purokBarChart.destroy()
+  if (purokPieChart) purokPieChart.destroy()
+
+  // Create new charts
   if (genderPieCanvas.value) {
-    new ChartJS(genderPieCanvas.value, {
+    genderChart = new ChartJS(genderPieCanvas.value, {
       type: 'pie',
       data: genderChartData.value,
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'top' },
-          title: { display: true, text: `Gender Distribution - ${selectedBarangay.value}` }
-        }
-      }
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' }, title: { display: true, text: `Gender Distribution - ${selectedBarangay.value}` } },
+      },
     })
   }
 
   if (purokBarCanvas.value) {
-    new ChartJS(purokBarCanvas.value, {
+    purokBarChart = new ChartJS(purokBarCanvas.value, {
       type: 'bar',
       data: purokChartData.value,
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'top' },
-          title: { display: true, text: `Population per Purok - ${selectedBarangay.value}` }
-        },
-        scales: {
-          y: { beginAtZero: true }
-        }
-      }
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' }, title: { display: true, text: `Population per Purok - ${selectedBarangay.value}` } },
+        scales: { y: { beginAtZero: true } },
+      },
     })
   }
 
   if (purokPieCanvas.value) {
-    new ChartJS(purokPieCanvas.value, {
+    purokPieChart = new ChartJS(purokPieCanvas.value, {
       type: 'pie',
       data: purokPieChartData.value,
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'top' },
-          title: { display: true, text: `Population per Purok - ${selectedBarangay.value}` }
-        }
-      }
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' }, title: { display: true, text: `Population per Purok - ${selectedBarangay.value}` } },
+      },
     })
-  }
-})
-
-const fetchGenderDistribution = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('household_heads')
-      .select('male_count, female_count')
-      .eq('barangay', selectedBarangay.value)
-      .eq('is_archived', false)
-      .not('male_count', 'is', null)
-      .not('female_count', 'is', null)
-
-    if (error) throw error
-
-    let totalMale = 0
-    let totalFemale = 0
-    data.forEach(item => {
-      totalMale += item.male_count || 0
-      totalFemale += item.female_count || 0
-    })
-
-    genderChartData.value = {
-      labels: ['Male', 'Female'],
-      datasets: [{
-        label: 'Gender Distribution',
-        data: [totalMale, totalFemale],
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.6)',
-          'rgba(54, 162, 235, 0.6)'
-        ],
-        borderColor: [
-          'rgba(255, 99, 132, 1)',
-          'rgba(54, 162, 235, 1)'
-        ],
-        borderWidth: 1
-      }]
-    }
-  } catch (err) {
-    console.error('Error fetching gender distribution:', err)
-  }
-}
-
-const fetchPurokComparison = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('household_heads')
-      .select('purok, population')
-      .eq('barangay', selectedBarangay.value)
-      .not('population', 'is', null)
-
-    if (error) throw error
-
-    const purokData = {}
-    data.forEach(item => {
-      const key = item.purok
-      if (!purokData[key]) purokData[key] = 0
-      purokData[key] += item.population
-    })
-
-    purokChartData.value = {
-      labels: Object.keys(purokData),
-      datasets: [{
-        label: 'Population',
-        data: Object.values(purokData),
-        backgroundColor: 'rgba(255, 206, 86, 0.6)',
-        borderColor: 'rgba(255, 206, 86, 1)',
-        borderWidth: 1
-      }]
-    }
-  } catch (err) {
-    console.error('Error fetching purok comparison:', err)
-  }
-}
-
-const fetchPurokPie = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('household_heads')
-      .select('purok, population')
-      .eq('barangay', selectedBarangay.value)
-      .not('population', 'is', null)
-
-    if (error) throw error
-
-    const purokData = {}
-    data.forEach(item => {
-      const key = item.purok
-      if (!purokData[key]) purokData[key] = 0
-      purokData[key] += item.population
-    })
-
-    purokPieChartData.value = {
-      labels: Object.keys(purokData),
-      datasets: [{
-        label: 'Population',
-        data: Object.values(purokData),
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.6)',
-          'rgba(54, 162, 235, 0.6)',
-          'rgba(255, 206, 86, 0.6)',
-          'rgba(75, 192, 192, 0.6)',
-          'rgba(153, 102, 255, 0.6)'
-        ],
-        borderColor: [
-          'rgba(255, 99, 132, 1)',
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 206, 86, 1)',
-          'rgba(75, 192, 192, 1)',
-          'rgba(153, 102, 255, 1)'
-        ],
-        borderWidth: 1
-      }]
-    }
-  } catch (err) {
-    console.error('Error fetching purok pie:', err)
   }
 }
 

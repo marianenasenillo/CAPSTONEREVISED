@@ -49,7 +49,6 @@ describe('SERVICE_ELIGIBILITY_RULES', () => {
       'deworming_records',
       'wra_records',
       'cervical_screening_records',
-      'family_planning_records',
     ]
     for (const rule of SERVICE_ELIGIBILITY_RULES) {
       expect(validTables).toContain(rule.table)
@@ -113,17 +112,6 @@ describe('getEligibleServices', () => {
     expect(keys).not.toContain('cervical_screening')
   })
 
-  it('returns family_planning only for Married/Live-in, aged 15-49', () => {
-    const married = makeMember({ birthdate: '2000-01-01', sex: 'Male', civil_status: 'Married' })
-    expect(getEligibleServices(married).map(s => s.key)).toContain('family_planning')
-
-    const livein = makeMember({ birthdate: '2000-01-01', sex: 'Male', civil_status: 'Live-in' })
-    expect(getEligibleServices(livein).map(s => s.key)).toContain('family_planning')
-
-    const single = makeMember({ birthdate: '2000-01-01', sex: 'Male', civil_status: 'Single' })
-    expect(getEligibleServices(single).map(s => s.key)).not.toContain('family_planning')
-  })
-
   it('returns maternal_care only for pregnant/LMP females', () => {
     const notPregnant = makeMember({ birthdate: '2000-01-01', is_pregnant: false, lmp: null })
     expect(getEligibleServices(notPregnant).map(s => s.key)).not.toContain('maternal_care')
@@ -170,8 +158,8 @@ describe('getEligibleServices', () => {
   })
 
   it('civil_status comparison is case-insensitive', () => {
-    const member = makeMember({ birthdate: '2000-01-01', sex: 'Male', civil_status: 'married' })
-    expect(getEligibleServices(member).map(s => s.key)).toContain('family_planning')
+    const member = makeMember({ birthdate: '2000-01-01', sex: 'Female', civil_status: 'married' })
+    expect(getEligibleServices(member).map(s => s.key)).toContain('wra')
   })
 })
 

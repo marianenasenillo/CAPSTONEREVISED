@@ -59,7 +59,7 @@ const SERVICE_TABLE_CONFIG = {
         lastname: base.lastname || '',
         firstname: base.firstname || '',
         middlename: base.middlename || '',
-        sex: base.sex || '',
+        sex: base.sex || null,
         birthday: base.birthdate || null,
         age: base.age != null && base.age !== '' ? parseInt(base.age) : null,
         mother_name: extra.mother_name || null,
@@ -126,26 +126,6 @@ const SERVICE_TABLE_CONFIG = {
         age: base.age != null && base.age !== '' ? parseInt(base.age) : null,
         birthdate: base.birthdate || null,
         screened: extra.screened || '',
-      }
-    },
-  },
-
-  family_planning_records: {
-    label: 'Family Planning',
-    icon: 'mdi-account-group',
-    color: '#2196F3',
-    extraFields: [
-      { key: 'mother_name', label: "Mother's Name", type: 'text' },
-    ],
-    buildPayload(base, extra) {
-      return {
-        purok: base.purok || '',
-        surname: base.lastname || '',
-        firstname: base.firstname || '',
-        mother_name: extra.mother_name || '',
-        sex: base.sex || '',
-        birthday: base.birthdate || null,
-        age: base.age != null && base.age !== '' ? parseInt(base.age) : null,
       }
     },
   },
