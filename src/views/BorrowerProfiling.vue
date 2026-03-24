@@ -365,7 +365,7 @@ onMounted(async () => {
   <div class="hs-page">
     <div class="hs-page-header">
       <div>
-        <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower Profiling</h1>
+        <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower Profiling <small style="font-size:0.55em;font-weight:400;opacity:0.7;">as of 2026</small></h1>
         <p class="hs-page-subtitle">Manage borrower profiles, medicine requests, and tool borrow records</p>
       </div>
     </div>
