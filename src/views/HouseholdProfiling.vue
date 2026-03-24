@@ -1047,6 +1047,7 @@ const saveQuickAddRecord = async () => {
                 <span class="mdi" :class="opt.icon" style="font-size:24px;"></span>
                 <strong>{{ opt.label }}</strong>
                 <span class="record-type-desc">{{ opt.desc }}</span>
+                <span v-if="opt.value === 'deworming'" class="dir-deworming-note"><span class="mdi mdi-information-outline"></span> Ages 10–19 only</span>
                 <span v-if="isRecordEnrolled(quickAddPerson?.data, opt.table)" class="record-type-enrolled-badge">
                   <span class="mdi mdi-check-circle"></span> Already Registered
                 </span>
