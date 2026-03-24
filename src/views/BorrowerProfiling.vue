@@ -28,6 +28,15 @@ async function notifyRole(targetRole, { type, title, message, icon, color, link 
 
 const currentYear = new Date().getFullYear()
 
+const displayPeriod = computed(() => {
+  if (activeTab.value === 'analytics') {
+    const y = analyticsYear.value
+    const m = analyticsMonth.value
+    return m ? `${monthNames[m - 1]} ${y}` : `${y}`
+  }
+  return `${currentYear}`
+})
+
 const loading = ref(true)
 const activeTab = ref('borrowers') // 'borrowers' | 'medicine_log' | 'tool_log' | 'analytics'
 const userBarangay = ref('')
@@ -368,7 +377,7 @@ onMounted(async () => {
     <div class="hs-page-header">
       <div class="hs-page-header-title-row">
         <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower Profiling</h1>
-        <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ currentYear }}</div>
+        <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ displayPeriod }}</div>
       </div>
       <p class="hs-page-subtitle">Manage borrower profiles, medicine requests, and tool borrow records</p>
     </div>

@@ -181,6 +181,7 @@ function clearFilters() {
 }
 
 const infoPopup = ref({ show: false, rule: null, member: null })
+const showEligibilityGuide = ref(false)
 
 function showServiceInfo(event, svc, member) {
   event.stopPropagation()
@@ -245,10 +246,13 @@ onMounted(loadMembers)
 <template>
   <div class="hs-page">
     <div class="hs-page-header">
-      <div>
+      <div class="hs-page-header-title-row">
         <h1 class="hs-page-title"><span class="mdi mdi-clipboard-check-outline"></span> Service Eligibility</h1>
-        <p class="hs-page-subtitle">Auto-detected eligible services for household members based on age, sex, and profile data</p>
+        <button class="hs-btn hs-btn-secondary hs-btn-sm" @click="showEligibilityGuide = true">
+          <span class="mdi mdi-information-outline"></span> Eligibility Guide
+        </button>
       </div>
+      <p class="hs-page-subtitle">Auto-detected eligible services for household members based on age, sex, and profile data</p>
     </div>
 
     <!-- Loading -->
@@ -430,6 +434,58 @@ onMounted(loadMembers)
 
         <div class="se-info-footer">
           <button class="hs-btn hs-btn-secondary hs-btn-sm" @click="closeInfoPopup">
+            <span class="mdi mdi-close"></span> Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Eligibility Guide Modal -->
+    <div v-if="showEligibilityGuide" class="se-info-overlay" @click.self="showEligibilityGuide = false">
+      <div class="se-info-modal" style="max-width:600px;">
+        <div class="se-info-header">
+          <span class="mdi mdi-clipboard-check-outline se-info-icon"></span>
+          <div>
+            <h3>Service Eligibility Guide</h3>
+            <p>Complete breakdown of all eligibility criteria</p>
+          </div>
+          <button class="hs-modal-close" @click="showEligibilityGuide = false">&times;</button>
+        </div>
+        <div class="se-info-body" style="max-height:60vh;overflow-y:auto;">
+          <div v-for="rule in SERVICE_ELIGIBILITY_RULES" :key="rule.key" class="se-guide-item">
+            <div class="se-guide-header">
+              <span :class="'mdi ' + rule.icon" style="font-size:20px;color:var(--hs-primary);"></span>
+              <div style="flex:1;">
+                <strong>{{ rule.label }}</strong>
+                <div style="font-size:12px;color:var(--hs-gray-500);">{{ rule.description }}</div>
+              </div>
+            </div>
+            <div class="se-guide-criteria">
+              <div class="se-guide-criterion">
+                <span class="mdi mdi-calendar-account" style="color:var(--hs-primary);"></span>
+                <span>Age: <strong>{{ rule.ageMax >= 120 ? rule.ageMin + '+ years' : rule.ageMin + '–' + rule.ageMax + ' years' }}</strong></span>
+              </div>
+              <div v-if="rule.sex" class="se-guide-criterion">
+                <span class="mdi mdi-gender-male-female" style="color:var(--hs-primary);"></span>
+                <span>Sex: <strong>{{ rule.sex }}</strong></span>
+              </div>
+              <div v-if="rule.civilStatus && rule.civilStatus.length" class="se-guide-criterion">
+                <span class="mdi mdi-ring" style="color:var(--hs-primary);"></span>
+                <span>Civil Status: <strong>{{ rule.civilStatus.join(' or ') }}</strong></span>
+              </div>
+              <div v-if="rule.condition" class="se-guide-criterion">
+                <span class="mdi mdi-baby-carriage" style="color:var(--hs-primary);"></span>
+                <span>Special: <strong>Must have LMP recorded or marked as pregnant</strong></span>
+              </div>
+              <div v-if="!rule.sex && !rule.condition && !(rule.civilStatus && rule.civilStatus.length)" class="se-guide-criterion">
+                <span class="mdi mdi-check-circle" style="color:var(--hs-success);"></span>
+                <span>Open to <strong>all sexes</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="se-info-footer">
+          <button class="hs-btn hs-btn-secondary hs-btn-sm" @click="showEligibilityGuide = false">
             <span class="mdi mdi-close"></span> Close
           </button>
         </div>
@@ -795,6 +851,37 @@ onMounted(loadMembers)
   color: var(--hs-gray-500);
   margin-top: 2px;
 }
+
+/* Eligibility Guide Modal */
+.se-guide-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--hs-border);
+}
+.se-guide-item:last-child { border-bottom: none; }
+.se-guide-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.se-guide-criteria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 30px;
+}
+.se-guide-criterion {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--hs-gray-50, #f8f9fa);
+  border-radius: var(--hs-radius);
+  font-size: 12px;
+  color: var(--hs-gray-700);
+  border: 1px solid var(--hs-border);
+}
+
 .se-enroll-section-label {
   font-size: 12px;
   font-weight: 600;
