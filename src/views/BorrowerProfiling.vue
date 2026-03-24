@@ -26,6 +26,8 @@ async function notifyRole(targetRole, { type, title, message, icon, color, link 
   } catch (e) { console.error('Failed to send notification', e) }
 }
 
+const currentYear = new Date().getFullYear()
+
 const loading = ref(true)
 const activeTab = ref('borrowers') // 'borrowers' | 'medicine_log' | 'tool_log' | 'analytics'
 const userBarangay = ref('')
@@ -364,10 +366,11 @@ onMounted(async () => {
 <template>
   <div class="hs-page">
     <div class="hs-page-header">
-      <div>
-        <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower Profiling <small style="font-size:0.55em;font-weight:400;opacity:0.7;">as of 2026</small></h1>
-        <p class="hs-page-subtitle">Manage borrower profiles, medicine requests, and tool borrow records</p>
+      <div class="hs-page-header-title-row">
+        <h1 class="hs-page-title"><span class="mdi mdi-account-cash-outline"></span> Borrower Profiling</h1>
+        <div class="hs-year-banner"><span class="mdi mdi-calendar-outline"></span> As of {{ currentYear }}</div>
       </div>
+      <p class="hs-page-subtitle">Manage borrower profiles, medicine requests, and tool borrow records</p>
     </div>
 
     <!-- Tabs -->
