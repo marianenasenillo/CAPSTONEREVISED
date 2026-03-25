@@ -298,7 +298,16 @@ function buildEnrollPayload(member, rule) {
     return { ...base, gender: member.sex || '', mother_name: enrollFormData.mother_name || '' }
   }
   if (rule.table === 'deworming_records') {
-    return { ...base, sex: member.sex || null, birthday: member.birthdate || null, mother_name: enrollFormData.mother_name || null }
+    return {
+      purok: member.purok || '',
+      lastname: member.lastname || '',
+      firstname: member.firstname || '',
+      middlename: member.middlename || '',
+      age: member._age,
+      sex: member.sex || null,
+      birthday: member.birthdate || null,
+      mother_name: enrollFormData.mother_name || null,
+    }
   }
   if (rule.table === 'wra_records') {
     return {

@@ -127,7 +127,7 @@ const fetchWraRecords = async () => {
     const { data, error: err } = await supabase
       .from('wra_records')
       .select('*')
-      .eq('is_archived', false)
+      .or('is_archived.eq.false,is_archived.is.null')
       .gte('created_at', `${selectedYear.value}-01-01T00:00:00`)
       .lte('created_at', `${selectedYear.value}-12-31T23:59:59`)
       .order('lastname', { ascending: true })

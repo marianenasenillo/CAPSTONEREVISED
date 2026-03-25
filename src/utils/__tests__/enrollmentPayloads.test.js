@@ -61,7 +61,16 @@ function buildEnrollPayload(member, rule, enrollFormData = {}) {
     return { ...base, gender: member.sex || '', mother_name: enrollFormData.mother_name || '' }
   }
   if (rule.table === 'deworming_records') {
-    return { ...base, sex: member.sex || null, birthday: member.birthdate || null, mother_name: enrollFormData.mother_name || null }
+    return {
+      purok: member.purok || '',
+      lastname: member.lastname || '',
+      firstname: member.firstname || '',
+      middlename: member.middlename || '',
+      age: member._age,
+      sex: member.sex || null,
+      birthday: member.birthdate || null,
+      mother_name: enrollFormData.mother_name || null,
+    }
   }
   if (rule.table === 'wra_records') {
     return {
@@ -304,12 +313,19 @@ describe('Enrollment Payload: deworming_records', () => {
     expect(payload).not.toHaveProperty('gender')
   })
 
-  it('uses birthday field (duplicate of birthdate)', () => {
+  it('uses birthday field (not birthdate)', () => {
     const member = makeMember({ birthdate: '2015-06-01' })
     const rule = ruleFor('deworming_child')
     const payload = buildEnrollPayload(member, rule)
     expect(payload.birthday).toBe('2015-06-01')
-    expect(payload.birthdate).toBe('2015-06-01')
+    expect(payload).not.toHaveProperty('birthdate')
+  })
+
+  it('does not include suffix', () => {
+    const member = makeMember({ suffix: 'Jr' })
+    const rule = ruleFor('deworming_child')
+    const payload = buildEnrollPayload(member, rule)
+    expect(payload).not.toHaveProperty('suffix')
   })
 
   it('includes mother_name from form data (null default)', () => {
@@ -461,7 +477,7 @@ describe('Edge cases', () => {
     const rule = ruleFor('deworming_child')
     const payload = buildEnrollPayload(member, rule)
     expect(payload.birthday).toBe(null)
-    expect(payload.birthdate).toBe(null)
+    expect(payload).not.toHaveProperty('birthdate')
   })
 
   it('handles member with no optional fields', () => {
