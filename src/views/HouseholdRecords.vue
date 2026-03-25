@@ -90,35 +90,7 @@ const saveNewMember = async () => {
       throw error
     }
 
-    // Insert detected service records
-    const baseData = {
-      purok: newMember.value.purok || selectedHead.value?.purok || '',
-      lastname: newMember.value.lastname,
-      firstname: newMember.value.firstname,
-      middlename: newMember.value.middlename,
-      suffix: newMember.value.suffix,
-      birthdate: newMember.value.birthdate,
-      age: newMember.value.age,
-      sex: newMember.value.sex,
-      civil_status: newMember.value.civil_status,
-    }
-    const servicePayloads = memberDetection.buildPayloads(baseData)
-    const serviceErrors = []
-    for (const sp of servicePayloads) {
-      const { error: svcErr } = await supabase.from(sp.table).insert([sp.payload])
-      if (svcErr) {
-        console.error(`Failed to insert ${sp.label}:`, svcErr)
-        serviceErrors.push(sp.label)
-      }
-    }
-
-    if (serviceErrors.length > 0) {
-      toast.warning(`Member added, but some service records failed: ${serviceErrors.join(', ')}`)
-    } else if (servicePayloads.length > 0) {
-      toast.success(`Member added with ${servicePayloads.length} service record(s)!`)
-    } else {
-      toast.success('Member added successfully.')
-    }
+    toast.success('Member added successfully.')
     showAddMemberModal.value = false
     memberDetection.resetDetection()
     if (selectedHead.value) {
@@ -146,7 +118,7 @@ const recalcPopulation = async (head_id) => {
 }
 
 const deleteMember = async (member) => {
-  if (!confirm(`Delete member "${member.firstname} ${member.lastname}"? This action cannot be undone.`)) return
+  if (!confirm(`Remove member "${member.firstname} ${member.lastname}"? This action cannot be undone.`)) return
   try {
     const { error } = await supabase
       .from('household_members')
@@ -154,14 +126,14 @@ const deleteMember = async (member) => {
       .eq('member_id', member.member_id)
     if (error) throw error
 
-    toast.success('Member deleted successfully.')
+    toast.success('Member removed successfully.')
     if (selectedHead.value) {
       await recalcPopulation(selectedHead.value.head_id)
       await viewMembers(selectedHead.value)
     }
   } catch (e) {
     console.error(e)
-    toast.error('Error deleting member: ' + (e.message || e))
+    toast.error('Error removing member: ' + (e.message || e))
   }
 }
 
@@ -644,12 +616,13 @@ const exportreportPdf = async () => {
             </div>
           <button class="hs-btn hs-btn-primary" @click="exportCsv"><span class="mdi mdi-file-delimited-outline"></span> Export CSV</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
+          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="$router.push('/householdarchived')"><span class="mdi mdi-archive-outline"></span> View Archived</button>
         </div>
       </div>
 
-      <div v-if="selectedIds.length > 0 && userRole === 'BHW'" class="hs-batch-bar">
+      <div v-if="selectedIds.length > 0 && userRole === 'Admin'" class="hs-batch-bar">
         <span class="hs-batch-count">{{ selectedIds.length }} selected</span>
-        <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Remove Selected</button>
+        <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Delete Selected</button>
         <button class="hs-btn hs-btn-sm hs-btn-ghost" @click="selectedIds = []"><span class="mdi mdi-close"></span> Clear</button>
       </div>
 
@@ -704,8 +677,9 @@ const exportreportPdf = async () => {
                     <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>
                     <v-list>
                       <v-list-item @click="viewMembers(record)">View Members</v-list-item>
-                      <v-list-item v-if="userRole === 'BHW'" @click="editRecord(record)">Edit</v-list-item>
-                      <v-list-item v-if="userRole === 'BHW'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW' || userRole === 'Admin'" @click="editRecord(record)">Edit</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="deleteRecord(record)">Delete</v-list-item>
                     </v-list>
                   </v-menu>
                 </td>
@@ -748,7 +722,7 @@ const exportreportPdf = async () => {
                 <span class="mdi mdi-magnify"></span>
                 <input v-model="memberSearchQuery" type="search" placeholder="Search members..." />
               </div>
-              <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-primary hs-btn-sm" @click="initNewMember">
+              <button v-if="userRole === 'BHW' || userRole === 'Admin'" class="hs-btn hs-btn-primary hs-btn-sm" @click="initNewMember">
                 <span class="mdi mdi-plus"></span> Add Member
               </button>
               <button class="hs-btn hs-btn-primary hs-btn-sm" @click="exportMembersCsv" title="Export members as CSV">
@@ -800,10 +774,10 @@ const exportreportPdf = async () => {
                     <td>{{ m.medical_history || '-' }}</td>
                     <td>
                       <div class="member-action-btns">
-                        <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-primary hs-btn-sm" @click="editMemberRecord(m)" title="Edit">
+                        <button v-if="userRole === 'BHW' || userRole === 'Admin'" class="hs-btn hs-btn-primary hs-btn-sm" @click="editMemberRecord(m)" title="Edit">
                           <span class="mdi mdi-pencil-outline"></span>
                         </button>
-                        <button v-if="userRole === 'BHW'" class="hs-btn hs-btn-danger hs-btn-sm" @click="deleteMember(m)" title="Delete">
+                        <button v-if="userRole === 'BHW' || userRole === 'Admin'" class="hs-btn hs-btn-danger hs-btn-sm" @click="deleteMember(m)" title="Remove">
                           <span class="mdi mdi-delete-outline"></span>
                         </button>
                       </div>
@@ -989,52 +963,22 @@ const exportreportPdf = async () => {
                   </select>
                 </div>
               </div>
-              <!-- Auto-Detected Eligible Services -->
+              <!-- Eligible Services (Info Only) -->
               <div v-if="memberDetection.detectedTables.value.length > 0" class="svc-detection-panel" style="margin-top:16px;">
                 <div class="svc-detection-header">
                   <span class="mdi mdi-clipboard-check-outline"></span>
                   <div>
-                    <strong>Eligible Services (Auto-Detected)</strong>
-                    <span class="svc-detection-hint">Based on age, sex, and civil status. Uncheck any you do not wish to enroll.</span>
+                    <strong>Eligible Services</strong>
+                    <span class="svc-detection-hint">Based on age, sex, and civil status. This member is eligible for the following services. You can enroll them via the Service Eligibility page.</span>
                   </div>
                 </div>
-                <div v-for="tbl in memberDetection.detectedTables.value" :key="tbl.table" class="svc-table-card" :class="{ 'svc-table-card--disabled': !memberDetection.selectedTables[tbl.table] }">
-                  <div class="svc-table-card-header" @click="memberDetection.toggleTable(tbl.table)">
-                    <input type="checkbox" :checked="memberDetection.selectedTables[tbl.table]" @click.stop="memberDetection.toggleTable(tbl.table)" class="svc-table-check" />
+                <div v-for="tbl in memberDetection.detectedTables.value" :key="tbl.table" class="svc-table-card">
+                  <div class="svc-table-card-header">
                     <span class="mdi" :class="tbl.icon" :style="{ color: tbl.color, fontSize: '18px' }"></span>
                     <strong>{{ tbl.label }}</strong>
                     <span class="svc-table-badges">
                       <span v-for="svc in tbl.services" :key="svc.key" class="svc-badge">{{ svc.label }}</span>
                     </span>
-                  </div>
-                  <div v-if="memberDetection.selectedTables[tbl.table]" class="svc-table-card-body">
-                    <template v-if="memberDetection.getVisibleFields(tbl.table, { age: newMember.age, sex: newMember.sex }).length > 0">
-                      <div class="hs-form-row">
-                        <template v-for="field in memberDetection.getVisibleFields(tbl.table, { age: newMember.age, sex: newMember.sex })" :key="field.key">
-                          <div v-if="field.type === 'text'" class="hs-form-group">
-                            <label class="hs-label">{{ field.label }}</label>
-                            <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="text" class="hs-input" />
-                          </div>
-                          <div v-else-if="field.type === 'date'" class="hs-form-group">
-                            <label class="hs-label">{{ field.label }}</label>
-                            <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="date" class="hs-input" />
-                          </div>
-                          <div v-else-if="field.type === 'select'" class="hs-form-group">
-                            <label class="hs-label">{{ field.label }}</label>
-                            <select v-model="memberDetection.serviceFormData[tbl.table][field.key]" class="hs-select">
-                              <option value="">Select</option>
-                              <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
-                            </select>
-                          </div>
-                          <div v-else-if="field.type === 'checkbox'" class="hs-form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
-                            <label class="hs-checkbox-label">
-                              <input type="checkbox" v-model="memberDetection.serviceFormData[tbl.table][field.key]" />
-                              {{ field.label }}
-                            </label>
-                          </div>
-                        </template>
-                      </div>
-                    </template>
                   </div>
                 </div>
               </div>
@@ -1043,9 +987,6 @@ const exportreportPdf = async () => {
                 <button type="button" class="hs-btn hs-btn-secondary" @click="showAddMemberModal = false">Cancel</button>
                 <button type="submit" class="hs-btn hs-btn-primary">
                   <span class="mdi mdi-plus"></span> Add Member
-                  <span v-if="memberDetection.detectedTables.value.length > 0" style="font-size:11px;opacity:0.85;margin-left:4px;">
-                    + {{ memberDetection.detectedTables.value.filter(t => memberDetection.selectedTables[t.table]).length }} service(s)
-                  </span>
                 </button>
               </div>
             </form>

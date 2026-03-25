@@ -24,6 +24,12 @@ const BhwManagement = () => import('@/views/BhwManagement.vue')
 const HouseholdExport = () => import('@/components/reports/HouseholdExport.vue')
 const BorrowerProfiling = () => import('@/views/BorrowerProfiling.vue')
 const ServiceEligibility = () => import('@/views/ServiceEligibility.vue')
+const HouseholdArchived = () => import('@/views/HouseholdArchived.vue')
+const MembersArchived = () => import('@/views/MembersArchived.vue')
+const ChildcareArchived = () => import('@/views/ChildcareArchived.vue')
+const WraArchived = () => import('@/views/WraArchived.vue')
+const MaternalArchived = () => import('@/views/MaternalArchived.vue')
+const PreventiveHealthArchived = () => import('@/views/PreventiveHealthArchived.vue')
 
 // Normalize role string: "Admin" → "admin", "BHW" → "bhw"
 function normalizeRole(role) {
@@ -85,6 +91,14 @@ const router = createRouter({
         { path: 'register', name: 'register', component: BhwRegistration, meta: { requiresAdmin: true, minRole: 'admin' } },
         { path: 'bhw', name: 'bhw', component: BhwManagement },
         { path: 'hhpsexport', name: 'hhpsexport', component: HouseholdExport },
+
+        // Archived (Admin only)
+        { path: 'householdarchived', name: 'householdarchived', component: HouseholdArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
+        { path: 'membersarchived', name: 'membersarchived', component: MembersArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
+        { path: 'childcarearchived', name: 'childcarearchived', component: ChildcareArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
+        { path: 'wraarchived', name: 'wraarchived', component: WraArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
+        { path: 'maternalarchived', name: 'maternalarchived', component: MaternalArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
+        { path: 'preventivehealtharchived', name: 'preventivehealtharchived', component: PreventiveHealthArchived, meta: { requiresAdmin: true, minRole: 'admin' } },
       ],
     },
 

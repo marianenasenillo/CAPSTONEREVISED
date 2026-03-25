@@ -143,7 +143,7 @@ const fetchCervicalRecords = async () => {
 }
 
 const deleteRecord = async (record) => {
-  if (!confirm(`Are you sure you want to delete the cervical screening record for "${record.firstname} ${record.lastname}"? This action cannot be undone.`)) {
+  if (!confirm(`Are you sure you want to remove the cervical screening record for "${record.firstname} ${record.lastname}"? This action cannot be undone.`)) {
     return
   }
 
@@ -155,11 +155,11 @@ const deleteRecord = async (record) => {
 
     if (error) throw error
 
-    toast.success('Record deleted successfully.')
+    toast.success('Record removed successfully.')
     await fetchCervicalRecords() // Refresh the list
   } catch (e) {
     console.error(e)
-    toast.error('Error deleting record.')
+    toast.error('Error removing record.')
   }
 }
 
@@ -336,10 +336,11 @@ const exportreportPdf = async () => {
             </div>
           <button class="hs-btn hs-btn-primary" @click="exportCsv"><span class="mdi mdi-file-delimited-outline"></span> Export CSV</button>
           <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="openReport"><span class="mdi mdi-chart-bar"></span> Report</button>
+          <button v-if="userRole === 'Admin'" class="hs-btn hs-btn-secondary" @click="$router.push('/maternalarchived')"><span class="mdi mdi-archive-outline"></span> View Archived</button>
         </div>
       </div>
 
-      <div v-if="selectedIds.length > 0 && userRole === 'BHW'" class="hs-batch-bar">
+      <div v-if="selectedIds.length > 0 && (userRole === 'BHW' || userRole === 'Admin')" class="hs-batch-bar">
         <span class="hs-batch-count">{{ selectedIds.length }} selected</span>
         <button class="hs-btn hs-btn-sm hs-btn-danger" @click="batchDelete"><span class="mdi mdi-delete-outline"></span> Remove Selected</button>
         <button class="hs-btn hs-btn-sm hs-btn-ghost" @click="selectedIds = []"><span class="mdi mdi-close"></span> Clear</button>
@@ -379,8 +380,9 @@ const exportreportPdf = async () => {
                   <v-menu :model-value="showActionsDropdown === record.id" @update:model-value="val => val ? showActionsDropdown = record.id : showActionsDropdown = null" offset-y>
                     <template #activator="{ props }"><v-btn icon v-bind="props" size="small"><v-icon>mdi-dots-vertical</v-icon></v-btn></template>
                     <v-list>
-                      <v-list-item v-if="userRole === 'BHW'" @click="editRecordFunc(record)">Edit</v-list-item>
-                      <v-list-item v-if="userRole === 'BHW'" @click="deleteRecord(record)">Delete</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW' || userRole === 'Admin'" @click="editRecordFunc(record)">Edit</v-list-item>
+                      <v-list-item v-if="userRole === 'Admin'" @click="archiveRecord(record)">Archive</v-list-item>
+                      <v-list-item v-if="userRole === 'BHW' || userRole === 'Admin'" @click="deleteRecord(record)">Remove</v-list-item>
                     </v-list>
                   </v-menu>
                 </td>

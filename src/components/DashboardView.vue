@@ -302,6 +302,12 @@ function navigateTo(path) {
   if (isMobile.value) mobileOpen.value = false
 }
 
+const navServices = [
+  { label: 'Maternal Services', icon: 'mdi-human-female', path: '/maternalservices' },
+  { label: 'Child Care', icon: 'mdi-baby-face-outline', path: '/childcare' },
+  { label: 'Preventive Health', icon: 'mdi-medical-bag', path: '/preventivehealthservices' },
+]
+
 const navRecords = [
   { label: 'Household Records', icon: 'mdi-file-document-outline', path: '/hhpsrecords' },
   { label: 'WRA Records', icon: 'mdi-file-account-outline', path: '/maternalwrarecords' },
@@ -478,6 +484,40 @@ async function saveProfile() {
           <span class="mdi mdi-account-cash-outline hs-nav-icon"></span>
           <span v-if="!sidebarCollapsed || isMobile" class="hs-nav-label">Borrower Profiling</span>
         </button>
+
+        <!-- Services Group (BHW only) -->
+        <div v-if="userRole === 'BHW'" class="hs-nav-group">
+          <div v-if="!sidebarCollapsed || isMobile" class="hs-nav-section-label" style="margin-top: 6px;">Services</div>
+          <button
+            class="hs-nav-group-toggle"
+            @click="toggleGroup('services')"
+            :title="sidebarCollapsed && !isMobile ? 'Services' : ''"
+          >
+            <span class="mdi mdi-stethoscope hs-nav-icon"></span>
+            <template v-if="!sidebarCollapsed || isMobile">
+              <span class="hs-nav-label">Services</span>
+              <span
+                class="mdi hs-nav-chevron"
+                :class="isGroupExpanded('services') ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+              ></span>
+            </template>
+          </button>
+          <div
+            v-if="isGroupExpanded('services') && (!sidebarCollapsed || isMobile)"
+            class="hs-nav-subitems"
+          >
+            <button
+              v-for="item in navServices"
+              :key="item.path"
+              class="hs-nav-item sub"
+              :class="{ active: isActive(item.path) }"
+              @click="navigateTo(item.path)"
+            >
+              <span :class="'mdi ' + item.icon + ' hs-nav-icon'"></span>
+              <span class="hs-nav-label">{{ item.label }}</span>
+            </button>
+          </div>
+        </div>
 
         <!-- Records Group -->
         <div class="hs-nav-group">
