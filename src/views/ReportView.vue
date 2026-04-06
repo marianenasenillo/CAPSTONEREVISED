@@ -56,7 +56,24 @@ const exportPdf = async () => {
     }
   })
 
-  const canvas = await html2canvas(element, { scale: 2, useCORS: true })
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    onclone: (clonedDoc) => {
+      const origCanvases = element.querySelectorAll('canvas')
+      const clonedCanvases = clonedDoc.querySelectorAll('canvas')
+      clonedCanvases.forEach((cc, i) => {
+        if (origCanvases[i]) {
+          const img = clonedDoc.createElement('img')
+          img.src = origCanvases[i].toDataURL('image/png')
+          img.style.width = cc.style.width || cc.getAttribute('width') + 'px' || '100%'
+          img.style.height = cc.style.height || cc.getAttribute('height') + 'px' || '300px'
+          cc.parentNode.replaceChild(img, cc)
+        }
+      })
+    },
+  })
   const imgData = canvas.toDataURL('image/png')
 
   logos.forEach((img, index) => {
@@ -121,7 +138,24 @@ const captureElement = async (element) => {
     }
   })
 
-  const canvas = await html2canvas(element, { scale: 2, useCORS: true })
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    onclone: (clonedDoc) => {
+      const origCanvases = element.querySelectorAll('canvas')
+      const clonedCanvases = clonedDoc.querySelectorAll('canvas')
+      clonedCanvases.forEach((cc, i) => {
+        if (origCanvases[i]) {
+          const img = clonedDoc.createElement('img')
+          img.src = origCanvases[i].toDataURL('image/png')
+          img.style.width = cc.style.width || cc.getAttribute('width') + 'px' || '100%'
+          img.style.height = cc.style.height || cc.getAttribute('height') + 'px' || '300px'
+          cc.parentNode.replaceChild(img, cc)
+        }
+      })
+    },
+  })
 
   logos.forEach((img, i) => {
     img.style.height = origSizes[i]
@@ -137,7 +171,7 @@ const captureElement = async (element) => {
 const bulkExportPdf = async () => {
   bulkExporting.value = true
   await nextTick()
-  await new Promise(r => setTimeout(r, 1500))
+  await new Promise(r => setTimeout(r, 3000))
 
   const refs = [report1Ref.value, report2Ref.value, report3Ref.value]
   const pdf = new jsPDF('p', 'mm', 'a4')
@@ -220,6 +254,6 @@ const bulkExportPdf = async () => {
 .report-wrapper { background: var(--hs-white); border-radius: var(--hs-radius-lg); max-width: 1200px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 24px; }
 .report-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: var(--hs-space-2); }
 .report-container { max-width: 1100px; margin: 0 auto; }
-.bulk-export-container { position: absolute; left: -9999px; top: 0; width: 1100px; }
+.bulk-export-container { position: fixed; left: 0; top: 0; width: 1100px; opacity: 0; pointer-events: none; z-index: -1; }
 @media print { .report-actions { display: none; } }
 </style>
