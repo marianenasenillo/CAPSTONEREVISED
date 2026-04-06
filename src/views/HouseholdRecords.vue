@@ -11,6 +11,7 @@ import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
+import { recalcPopulation } from '@/utils/householdPopulation'
 
 const toast = useToast()
 const router = useRouter()
@@ -104,19 +105,6 @@ const saveNewMember = async () => {
 }
 
 // Recalculate population, male_count, female_count from members + head
-const recalcPopulation = async (head_id) => {
-  try {
-    const { data: head } = await supabase.from('household_heads').select('sex').eq('head_id', head_id).single()
-    const { data: mems } = await supabase.from('household_members').select('sex').eq('head_id', head_id).eq('is_archived', false)
-    const allPeople = [...(mems || [])]
-    if (head) allPeople.push({ sex: head.sex })
-    const population = allPeople.length
-    const male_count = allPeople.filter(p => p.sex === 'M' || p.sex === 'Male').length
-    const female_count = allPeople.filter(p => p.sex === 'F' || p.sex === 'Female').length
-    await supabase.from('household_heads').update({ population, male_count, female_count }).eq('head_id', head_id)
-  } catch (e) { console.error('recalcPopulation error:', e) }
-}
-
 const deleteMember = async (member) => {
   if (!confirm(`Remove member "${member.firstname} ${member.lastname}"? This action cannot be undone.`)) return
   try {
@@ -427,6 +415,8 @@ const saveEdit = async () => {
 
     toast.success('Record updated successfully.')
     showEditModal.value = false
+    // Recalculate population in case sex changed
+    await recalcPopulation(editHead.value.head_id)
     await fetchHeadRecords()
   } catch (e) {
     console.error('[editHead] Error:', e?.code, e?.message, e)
@@ -478,6 +468,8 @@ const saveMemberEdit = async () => {
 
     toast.success('Member updated successfully.')
     showEditMemberModal.value = false
+    // Recalculate population in case sex changed
+    if (editingMember.value.head_id) await recalcPopulation(editingMember.value.head_id)
     if (selectedHead.value) await viewMembers(selectedHead.value)
   } catch (e) {
     console.error('[editMember] Error:', e?.code, e?.message, e)

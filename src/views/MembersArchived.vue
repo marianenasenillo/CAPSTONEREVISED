@@ -5,6 +5,7 @@ import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
 import { calculateAge } from '@/utils/ageClassification'
+import { recalcPopulation } from '@/utils/householdPopulation'
 
 const sexDisplay = (v) => v === 'M' ? 'Male' : v === 'F' ? 'Female' : (v || '—')
 const toast = useToast()
@@ -77,6 +78,7 @@ const restoreRecord = async (record) => {
       .eq('member_id', record.member_id)
     if (error) throw error
     toast.success('Member restored successfully.')
+    if (record.head_id) await recalcPopulation(record.head_id)
     await fetchArchivedMembers()
   } catch (e) {
     console.error(e)
@@ -87,12 +89,14 @@ const restoreRecord = async (record) => {
 const deleteRecord = async (record) => {
   if (!confirm(`Permanently delete member "${record.firstname} ${record.lastname}"? This action cannot be undone.`)) return
   try {
+    const headId = record.head_id
     const { error } = await supabase
       .from('household_members')
       .delete()
       .eq('member_id', record.member_id)
     if (error) throw error
     toast.success('Member deleted permanently.')
+    if (headId) await recalcPopulation(headId)
     await fetchArchivedMembers()
   } catch (e) {
     console.error(e)

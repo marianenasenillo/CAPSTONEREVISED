@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
+import { recalcPopulation } from '@/utils/householdPopulation'
 
 const toast = useToast()
 const router = useRouter()
@@ -162,6 +163,7 @@ const restoreRecord = async (record) => {
     if (error) throw error
 
     toast.success('Record restored successfully.')
+    await recalcPopulation(record.head_id)
     await fetchHeadRecords() // Refresh the list
   } catch (e) {
     console.error(e)

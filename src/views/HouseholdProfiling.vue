@@ -5,6 +5,7 @@ import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
 import { calculateAge, getAgeGroupLabel } from '@/utils/ageClassification'
 import { getEligibleServices } from '@/utils/serviceEligibility'
+import { recalcPopulation } from '@/utils/householdPopulation'
 import { usePagination } from '@/composables/usePagination'
 
 const toast = useToast()
@@ -268,14 +269,16 @@ const saveHead = async () => {
       male_count: null,
     }
 
-    const { data, error } = await supabase.from('household_heads').insert([headPayload])
+    const { data, error } = await supabase.from('household_heads').insert([headPayload]).select().single()
 
     if (error) {
       console.error('[saveHead] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(headPayload, null, 2))
       throw error
     }
 
-    // Service records are now indicator-only — no auto-enrollment
+    // Set initial population (head counts as 1)
+    if (data?.head_id) await recalcPopulation(data.head_id)
+
     toast.success('Household head saved successfully!')
 
     // Notify admin about new household head
@@ -361,7 +364,9 @@ const saveHousehold = async () => {
       throw error
     }
 
-    // Service records are now indicator-only — no auto-enrollment
+    // Recalculate population for the household head
+    await recalcPopulation(selectedHeadId.value)
+
     toast.success('Household member saved successfully!')
 
     // Notify admin about new household member
@@ -589,6 +594,9 @@ const saveEditHead = async () => {
     const { error } = await supabase.from('household_heads').update(updates).eq('head_id', head_id)
     if (error) throw error
 
+    // Recalculate population in case sex changed
+    await recalcPopulation(head_id)
+
     toast.success('Household head updated.')
     showEditHeadModal.value = false
     await loadDirectory()
@@ -614,6 +622,9 @@ const saveEditMember = async () => {
 
     const { error } = await supabase.from('household_members').update(updates).eq('member_id', member_id)
     if (error) throw error
+
+    // Recalculate population in case sex changed
+    if (editMemberForm.value.head_id) await recalcPopulation(editMemberForm.value.head_id)
 
     toast.success('Member updated.')
     showEditMemberModal.value = false

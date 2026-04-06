@@ -3,6 +3,7 @@ import DashboardView from '@/components/DashboardView.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
+import { recalcPopulation } from '@/utils/householdPopulation'
 
 const router = useRouter()
 const showRecords = ref(false)
@@ -255,12 +256,16 @@ const saveHead = async () => {
       male_count: null,
     }
 
-    const { data, error } = await supabase.from('household_heads').insert([headPayload])
+    const { data, error } = await supabase.from('household_heads').insert([headPayload]).select().single()
 
     if (error) {
       console.error('[saveHead] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(headPayload, null, 2))
       throw error
     }
+
+    // Set initial population (head counts as 1)
+    if (data?.head_id) await recalcPopulation(data.head_id)
+
     alert('Household head saved successfully!')
     closeModal()
 
@@ -327,6 +332,10 @@ const saveHousehold = async () => {
       console.error('[saveMember] Supabase error:', error.code, error.message, '\nPayload:', JSON.stringify(memberPayload, null, 2))
       throw error
     }
+
+    // Recalculate population for the household head
+    await recalcPopulation(selectedHeadId.value)
+
     alert('Household member saved successfully!')
     closeModal()
 
