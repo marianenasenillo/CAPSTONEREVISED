@@ -136,19 +136,22 @@ export async function createMedicineTransaction({
 
   // Manual entry — no stock deduction
   if (!medicine_id) {
+    const insertPayload = {
+      medicine_id: null,
+      medicine_name: medicine_name_manual.trim(),
+      quantity,
+      transaction_type: 'request',
+      recipient_name: recipientName,
+      recipient_purok: recipientPurok,
+      notes: `Provided via Borrower Profiling${prescribed_by ? ' by ' + prescribed_by : ''}${purpose ? ' — ' + purpose : ''}`,
+    }
+    if (borrower_id) insertPayload.borrower_id = borrower_id
+    if (purpose) insertPayload.purpose = purpose
+    if (prescribed_by) insertPayload.prescribed_by = prescribed_by
+
     const { data: tx, error: txErr } = await supabase
       .from('medicine_transactions')
-      .insert({
-        borrower_id,
-        medicine_id: null,
-        medicine_name: medicine_name_manual.trim(),
-        quantity,
-        purpose,
-        prescribed_by,
-        transaction_type: 'request',
-        recipient_name: recipientName,
-        recipient_purok: recipientPurok,
-      })
+      .insert(insertPayload)
       .select()
       .single()
     if (txErr) throw txErr
@@ -175,22 +178,25 @@ export async function createMedicineTransaction({
 
   if (updErr) throw updErr
   if (!updated || updated.length === 0) {
-    throw new Error('Failed to reserve stock (concurrent update)')
+    throw new Error('Failed to deduct stock — insufficient quantity or permission denied')
   }
+
+  const txPayload = {
+    medicine_id,
+    medicine_name: med.name,
+    quantity,
+    transaction_type: 'request',
+    recipient_name: recipientName,
+    recipient_purok: recipientPurok,
+    notes: `Provided via Borrower Profiling to ${recipientName || 'N/A'}${prescribed_by ? ' by ' + prescribed_by : ''}${purpose ? ' — ' + purpose : ''}`,
+  }
+  if (borrower_id) txPayload.borrower_id = borrower_id
+  if (purpose) txPayload.purpose = purpose
+  if (prescribed_by) txPayload.prescribed_by = prescribed_by
 
   const { data: tx, error: txErr } = await supabase
     .from('medicine_transactions')
-    .insert({
-      borrower_id,
-      medicine_id,
-      medicine_name: med.name,
-      quantity,
-      purpose,
-      prescribed_by,
-      transaction_type: 'request',
-      recipient_name: recipientName,
-      recipient_purok: recipientPurok,
-    })
+    .insert(txPayload)
     .select()
     .single()
 
@@ -255,20 +261,23 @@ export async function createToolBorrowTransaction({
 
   // Manual entry — no stock deduction
   if (!tool_id) {
+    const insertPayload = {
+      tool_id: null,
+      tool_name: tool_name_manual.trim(),
+      quantity,
+      expected_return_date,
+      status: 'borrowed',
+      transaction_type: 'borrow',
+      recipient_name: recipientName,
+      recipient_purok: recipientPurok,
+      notes: `Borrowed via Borrower Profiling by ${recipientName || 'N/A'}${purpose ? ' — ' + purpose : ''}`,
+    }
+    if (borrower_id) insertPayload.borrower_id = borrower_id
+    if (purpose) insertPayload.purpose = purpose
+
     const { data: tx, error: txErr } = await supabase
       .from('tool_transactions')
-      .insert({
-        borrower_id,
-        tool_id: null,
-        tool_name: tool_name_manual.trim(),
-        quantity,
-        purpose,
-        expected_return_date,
-        status: 'borrowed',
-        transaction_type: 'borrow',
-        recipient_name: recipientName,
-        recipient_purok: recipientPurok,
-      })
+      .insert(insertPayload)
       .select()
       .single()
     if (txErr) throw txErr
@@ -295,23 +304,26 @@ export async function createToolBorrowTransaction({
 
   if (updErr) throw updErr
   if (!updated || updated.length === 0) {
-    throw new Error('Failed to reserve stock (concurrent update)')
+    throw new Error('Failed to deduct stock — insufficient quantity or permission denied')
   }
+
+  const txPayload = {
+    tool_id,
+    tool_name: tool.name,
+    quantity,
+    expected_return_date,
+    status: 'borrowed',
+    transaction_type: 'borrow',
+    recipient_name: recipientName,
+    recipient_purok: recipientPurok,
+    notes: `Borrowed via Borrower Profiling by ${recipientName || 'N/A'}${purpose ? ' — ' + purpose : ''}`,
+  }
+  if (borrower_id) txPayload.borrower_id = borrower_id
+  if (purpose) txPayload.purpose = purpose
 
   const { data: tx, error: txErr } = await supabase
     .from('tool_transactions')
-    .insert({
-      borrower_id,
-      tool_id,
-      tool_name: tool.name,
-      quantity,
-      purpose,
-      expected_return_date,
-      status: 'borrowed',
-      transaction_type: 'borrow',
-      recipient_name: recipientName,
-      recipient_purok: recipientPurok,
-    })
+    .insert(txPayload)
     .select()
     .single()
 
@@ -364,6 +376,7 @@ export async function returnTool(transaction_id, return_quantity = null) {
       status: 'returned',
       return_date: new Date().toISOString(),
       return_quantity: qty,
+      notes: `Tool returned (qty: ${qty}) via Borrower Profiling`,
     })
     .eq('transaction_id', transaction_id)
     .select()

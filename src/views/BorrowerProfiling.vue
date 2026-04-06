@@ -90,18 +90,23 @@ const filteredToolSuggestions = computed(() => {
   if (!q) return available.slice(0, 5)
   return available.filter(t => t.name.toLowerCase().includes(q))
 })
-const selectMedSuggestion = (m) => { medicineForm.value.medicine_id = m.medicine_id; medicineForm.value.medicine_name_manual = m.name; showMedSuggestions.value = false }
-const selectToolSuggestion = (t) => { toolForm.value.tool_id = t.tool_id; toolForm.value.tool_name_manual = t.name; showToolSuggestions.value = false }
+// Flags to skip watchers when programmatically selecting from dropdown
+const skipMedWatch = ref(false)
+const skipToolWatch = ref(false)
+const selectMedSuggestion = (m) => { skipMedWatch.value = true; medicineForm.value.medicine_id = m.medicine_id; medicineForm.value.medicine_name_manual = m.name; showMedSuggestions.value = false }
+const selectToolSuggestion = (t) => { skipToolWatch.value = true; toolForm.value.tool_id = t.tool_id; toolForm.value.tool_name_manual = t.name; showToolSuggestions.value = false }
 const blurMedSuggestions = () => { setTimeout(() => { showMedSuggestions.value = false }, 200) }
 const blurToolSuggestions = () => { setTimeout(() => { showToolSuggestions.value = false }, 200) }
 
 // Clear medicine_id when user types a name that doesn't match any suggestion
 watch(() => medicineForm.value.medicine_name_manual, (val) => {
+  if (skipMedWatch.value) { skipMedWatch.value = false; return }
   if (!val) { medicineForm.value.medicine_id = ''; return }
   const match = medicines.value.find(m => m.name.toLowerCase() === val.trim().toLowerCase())
   medicineForm.value.medicine_id = match ? match.medicine_id : ''
 })
 watch(() => toolForm.value.tool_name_manual, (val) => {
+  if (skipToolWatch.value) { skipToolWatch.value = false; return }
   if (!val) { toolForm.value.tool_id = ''; return }
   const match = tools.value.find(t => t.name.toLowerCase() === val.trim().toLowerCase())
   toolForm.value.tool_id = match ? match.tool_id : ''
@@ -156,7 +161,9 @@ async function loadData() {
     ])
 
     borrowers.value = borrowerData || []
+    if (medData.error) console.error('Failed to load medicine:', medData.error)
     medicines.value = medData.data || []
+    if (toolData.error) console.error('Failed to load tools:', toolData.error)
     tools.value = toolData.data || []
     householdMembers.value = (memberData.data || []).map(m => ({ ...m, purok: m.household_heads?.purok || '', household_heads: undefined }))
 

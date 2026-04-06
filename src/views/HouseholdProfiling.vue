@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { supabase } from '@/utils/supabase.js'
 import { calculateAge, getAgeGroupLabel } from '@/utils/ageClassification'
-import { useServiceDetection } from '@/composables/useServiceDetection'
 import { getEligibleServices } from '@/utils/serviceEligibility'
 import { usePagination } from '@/composables/usePagination'
 
@@ -104,76 +103,40 @@ const members = ref([
   }
 ])
 
-// Service detection composables
-const memberDetection = useServiceDetection()
-const headDetection = useServiceDetection()
-
-// Additional member form fields for service detection
+// Additional member form fields
 const isPregnant = ref(false)
 
-// Computed: purok from selected household head (for member service inserts)
-const selectedHeadPurok = computed(() => {
-  if (!selectedHeadId.value) return ''
-  const head = householdHeads.value.find(h => h.head_id === selectedHeadId.value)
-  return head?.purok || ''
-})
-
-// Member form watchers — auto-calculate age, classify, and detect services
+// Member form watchers — auto-calculate age and classify
 watch(birthdate, (newVal) => {
   if (newVal) {
     const calculatedAge = calculateAge(newVal)
     age.value = calculatedAge !== null && calculatedAge >= 0 ? calculatedAge : ''
     ageGroup.value = getAgeGroupLabel(newVal)
-    memberDetection.detectServices({
-      birthdate: newVal,
-      sex: sex.value,
-      civil_status: civilStatus.value,
-      lmp: lmp.value,
-      is_pregnant: isPregnant.value,
-    })
   } else {
     age.value = ''
     ageGroup.value = ''
-    memberDetection.resetDetection()
   }
 })
 
-watch([sex, civilStatus, lmp, isPregnant], () => {
-  if (birthdate.value) {
-    memberDetection.detectServices({
-      birthdate: birthdate.value,
-      sex: sex.value,
-      civil_status: civilStatus.value,
-      lmp: lmp.value,
-      is_pregnant: isPregnant.value,
-    })
-  }
-})
-
-// Head form watchers — auto-calculate age and detect services
+// Head form watchers — auto-calculate age
 watch(() => headBirthdate.value, (newVal) => {
   if (newVal) {
     const calc = calculateAge(newVal)
     headAge.value = calc !== null && calc >= 0 ? calc : ''
-    headDetection.detectServices({
-      birthdate: newVal,
-      sex: headSex.value,
-      civil_status: headCivilStatus.value,
-    })
   } else {
     headAge.value = ''
-    headDetection.resetDetection()
   }
 })
 
-watch([headSex, headCivilStatus], () => {
-  if (headBirthdate.value) {
-    headDetection.detectServices({
-      birthdate: headBirthdate.value,
-      sex: headSex.value,
-      civil_status: headCivilStatus.value,
-    })
-  }
+// Eligibility info cards — read-only, no auto-enrollment
+const memberEligibleServices = computed(() => {
+  if (!birthdate.value || !sex.value) return []
+  return getEligibleServices({ birthdate: birthdate.value, sex: sex.value, lmp: lmp.value, is_pregnant: isPregnant.value })
+})
+
+const headEligibleServices = computed(() => {
+  if (!headBirthdate.value || !headSex.value) return []
+  return getEligibleServices({ birthdate: headBirthdate.value, sex: headSex.value })
 })
 
 const filteredHeads = computed(() => {
@@ -332,7 +295,6 @@ const saveHead = async () => {
     } catch { /* non-critical */ }
 
     closeModal()
-    headDetection.resetDetection()
 
     headBarangay.value = userBarangay.value
     headPurok.value = ''
@@ -419,7 +381,6 @@ const saveHousehold = async () => {
     } catch { /* non-critical */ }
 
     closeModal()
-    memberDetection.resetDetection()
 
     selectedHeadId.value = ''
     headSearchQuery.value = ''
@@ -1523,59 +1484,19 @@ const saveQuickAddRecord = async () => {
                   </div>
                 </div>
 
-                <!-- SECTION: Auto-Detected Services -->
-                <div v-if="memberDetection.detectedTables.value.length > 0" class="form-section">
-                  <div class="svc-detection-panel">
-                    <div class="svc-detection-header">
-                      <span class="mdi mdi-clipboard-check-outline"></span>
-                      <div>
-                        <strong>Eligible Services (Auto-Detected)</strong>
-                        <span class="svc-detection-hint">Based on the entered data, this member qualifies for the services below. Uncheck any you do not wish to enroll.</span>
-                      </div>
-                    </div>
-
-                    <div v-for="tbl in memberDetection.detectedTables.value" :key="tbl.table" class="svc-table-card" :class="{ 'svc-table-card--disabled': !memberDetection.selectedTables[tbl.table] }">
-                      <div class="svc-table-card-header" @click="memberDetection.toggleTable(tbl.table)">
-                        <input type="checkbox" :checked="memberDetection.selectedTables[tbl.table]" @click.stop="memberDetection.toggleTable(tbl.table)" class="svc-table-check" />
-                        <span class="mdi" :class="tbl.icon" :style="{ color: tbl.color, fontSize: '18px' }"></span>
-                        <strong>{{ tbl.label }}</strong>
-                        <span class="svc-table-badges">
-                          <span v-for="svc in tbl.services" :key="svc.key" class="svc-badge">{{ svc.label }}</span>
-                        </span>
-                      </div>
-
-                      <div v-if="memberDetection.selectedTables[tbl.table]" class="svc-table-card-body">
-                        <template v-if="memberDetection.getVisibleFields(tbl.table, { age: age, sex: sex }).length > 0">
-                          <div class="hs-form-row">
-                            <template v-for="field in memberDetection.getVisibleFields(tbl.table, { age: age, sex: sex })" :key="field.key">
-                              <div v-if="field.type === 'text'" class="hs-form-group">
-                                <label class="hs-label">{{ field.label }}</label>
-                                <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="text" class="hs-input" />
-                              </div>
-                              <div v-else-if="field.type === 'date'" class="hs-form-group">
-                                <label class="hs-label">{{ field.label }}</label>
-                                <input v-model="memberDetection.serviceFormData[tbl.table][field.key]" type="date" class="hs-input" />
-                              </div>
-                              <div v-else-if="field.type === 'select'" class="hs-form-group">
-                                <label class="hs-label">{{ field.label }}</label>
-                                <select v-model="memberDetection.serviceFormData[tbl.table][field.key]" class="hs-select">
-                                  <option value="">Select</option>
-                                  <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
-                                </select>
-                              </div>
-                              <div v-else-if="field.type === 'checkbox'" class="hs-form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
-                                <label class="hs-checkbox-label">
-                                  <input type="checkbox" v-model="memberDetection.serviceFormData[tbl.table][field.key]" />
-                                  {{ field.label }}
-                                </label>
-                              </div>
-                            </template>
-                          </div>
-                        </template>
-                        <p v-else class="svc-no-extra"><span class="mdi mdi-check-circle-outline"></span> No additional fields required &mdash; data will be taken from the form above.</p>
-                      </div>
-                    </div>
+                <!-- Eligibility Info Card -->
+                <div v-if="memberEligibleServices.length" class="eligibility-info-card">
+                  <div class="eligibility-info-header">
+                    <span class="mdi mdi-information-outline"></span>
+                    <strong>Service Eligibility</strong>
                   </div>
+                  <p>This member is eligible for the following services:</p>
+                  <ul class="eligibility-list">
+                    <li v-for="svc in memberEligibleServices" :key="svc.key">
+                      <span :class="'mdi ' + svc.icon" style="margin-right:6px;"></span>
+                      <strong>{{ svc.label }}</strong> — {{ svc.description }}
+                    </li>
+                  </ul>
                 </div>
 
                 <div class="hs-modal-footer hs-modal-footer--flat">
@@ -1584,9 +1505,6 @@ const saveQuickAddRecord = async () => {
                   </button>
                   <button type="submit" class="hs-btn hs-btn-primary">
                     <span class="mdi mdi-plus"></span> Add Member
-                    <span v-if="memberDetection.detectedTables.value.length > 0" class="btn-service-count">
-                      + {{ memberDetection.detectedTables.value.filter(t => memberDetection.selectedTables[t.table]).length }} service(s)
-                    </span>
                   </button>
                 </div>
               </form>
@@ -1713,59 +1631,19 @@ const saveQuickAddRecord = async () => {
                   </div>
                 </div>
 
-                <!-- SECTION: Auto-Detected Services -->
-                <div v-if="headDetection.detectedTables.value.length > 0" class="form-section">
-                  <div class="svc-detection-panel">
-                    <div class="svc-detection-header">
-                      <span class="mdi mdi-clipboard-check-outline"></span>
-                      <div>
-                        <strong>Eligible Services (Auto-Detected)</strong>
-                        <span class="svc-detection-hint">Based on the entered data, this household head qualifies for the services below. Uncheck any you do not wish to enroll.</span>
-                      </div>
-                    </div>
-
-                    <div v-for="tbl in headDetection.detectedTables.value" :key="tbl.table" class="svc-table-card" :class="{ 'svc-table-card--disabled': !headDetection.selectedTables[tbl.table] }">
-                      <div class="svc-table-card-header" @click="headDetection.toggleTable(tbl.table)">
-                        <input type="checkbox" :checked="headDetection.selectedTables[tbl.table]" @click.stop="headDetection.toggleTable(tbl.table)" class="svc-table-check" />
-                        <span class="mdi" :class="tbl.icon" :style="{ color: tbl.color, fontSize: '18px' }"></span>
-                        <strong>{{ tbl.label }}</strong>
-                        <span class="svc-table-badges">
-                          <span v-for="svc in tbl.services" :key="svc.key" class="svc-badge">{{ svc.label }}</span>
-                        </span>
-                      </div>
-
-                      <div v-if="headDetection.selectedTables[tbl.table]" class="svc-table-card-body">
-                        <template v-if="headDetection.getVisibleFields(tbl.table, { age: headAge, sex: headSex }).length > 0">
-                          <div class="hs-form-row">
-                            <template v-for="field in headDetection.getVisibleFields(tbl.table, { age: headAge, sex: headSex })" :key="field.key">
-                              <div v-if="field.type === 'text'" class="hs-form-group">
-                                <label class="hs-label">{{ field.label }}</label>
-                                <input v-model="headDetection.serviceFormData[tbl.table][field.key]" type="text" class="hs-input" />
-                              </div>
-                              <div v-else-if="field.type === 'date'" class="hs-form-group">
-                                <label class="hs-label">{{ field.label }}</label>
-                                <input v-model="headDetection.serviceFormData[tbl.table][field.key]" type="date" class="hs-input" />
-                              </div>
-                              <div v-else-if="field.type === 'select'" class="hs-form-group">
-                                <label class="hs-label">{{ field.label }}</label>
-                                <select v-model="headDetection.serviceFormData[tbl.table][field.key]" class="hs-select">
-                                  <option value="">Select</option>
-                                  <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
-                                </select>
-                              </div>
-                              <div v-else-if="field.type === 'checkbox'" class="hs-form-group" style="display:flex;align-items:flex-end;padding-bottom:10px;">
-                                <label class="hs-checkbox-label">
-                                  <input type="checkbox" v-model="headDetection.serviceFormData[tbl.table][field.key]" />
-                                  {{ field.label }}
-                                </label>
-                              </div>
-                            </template>
-                          </div>
-                        </template>
-                        <p v-else class="svc-no-extra"><span class="mdi mdi-check-circle-outline"></span> No additional fields required &mdash; data will be taken from the form above.</p>
-                      </div>
-                    </div>
+                <!-- Eligibility Info Card -->
+                <div v-if="headEligibleServices.length" class="eligibility-info-card">
+                  <div class="eligibility-info-header">
+                    <span class="mdi mdi-information-outline"></span>
+                    <strong>Service Eligibility</strong>
                   </div>
+                  <p>This household head is eligible for the following services:</p>
+                  <ul class="eligibility-list">
+                    <li v-for="svc in headEligibleServices" :key="svc.key">
+                      <span :class="'mdi ' + svc.icon" style="margin-right:6px;"></span>
+                      <strong>{{ svc.label }}</strong> — {{ svc.description }}
+                    </li>
+                  </ul>
                 </div>
 
                 <div class="hs-modal-footer hs-modal-footer--flat">
@@ -1774,9 +1652,6 @@ const saveQuickAddRecord = async () => {
                   </button>
                   <button type="submit" class="hs-btn hs-btn-primary">
                     <span class="mdi mdi-content-save"></span> Save Record
-                    <span v-if="headDetection.detectedTables.value.length > 0" class="btn-service-count">
-                      + {{ headDetection.detectedTables.value.filter(t => headDetection.selectedTables[t.table]).length }} service(s)
-                    </span>
                   </button>
                 </div>
               </form>
@@ -2253,6 +2128,46 @@ const saveQuickAddRecord = async () => {
 </template>
 
 <style scoped>
+.eligibility-info-card {
+  margin: 16px 0 8px;
+  padding: 14px 18px;
+  background: var(--hs-info-bg, #e8f4fd);
+  border: 1px solid var(--hs-info-border, #b3d8f0);
+  border-radius: var(--hs-radius-md, 8px);
+  color: var(--hs-info-text, #1a5276);
+}
+.eligibility-info-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+.eligibility-info-header .mdi {
+  font-size: 18px;
+  color: var(--hs-info, #2196f3);
+}
+.eligibility-info-card p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.eligibility-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.eligibility-list li {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.eligibility-list li .mdi {
+  color: var(--hs-primary, #2196f3);
+}
 .service-page {
   max-width: var(--hs-content-max-width);
 }

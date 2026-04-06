@@ -87,8 +87,9 @@ async function loadMembers() {
 
     const { data: memberData, error: memberErr } = await supabase
       .from('household_members')
-      .select('member_id, head_id, firstname, lastname, middlename, suffix, birthdate, age, sex, civil_status, barangay, lmp, is_4ps_member, is_pregnant, household_heads(purok)')
+      .select('member_id, head_id, firstname, lastname, middlename, suffix, birthdate, age, sex, civil_status, barangay, lmp, is_4ps_member, is_pregnant, household_heads(purok, is_archived)')
       .eq('barangay', userBarangay.value)
+      .eq('is_archived', false)
       .order('lastname', { ascending: true })
 
     if (memberErr) throw memberErr
@@ -102,12 +103,14 @@ async function loadMembers() {
 
     if (headErr) throw headErr
 
-    const flatMembers = (memberData || []).map(m => ({
-      ...m,
-      purok: m.household_heads?.purok || '',
-      household_heads: undefined,
-      _isHead: false,
-    }))
+    const flatMembers = (memberData || [])
+      .filter(m => !m.household_heads?.is_archived)
+      .map(m => ({
+        ...m,
+        purok: m.household_heads?.purok || '',
+        household_heads: undefined,
+        _isHead: false,
+      }))
 
     const memberHeadIds = new Set(flatMembers.map(m => m.head_id).filter(Boolean))
     const headAsMembers = (headData || []).filter(h => !memberHeadIds.has(h.head_id) || true).map(h => ({
