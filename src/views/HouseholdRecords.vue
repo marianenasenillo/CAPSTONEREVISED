@@ -48,7 +48,6 @@ const initNewMember = () => {
   newMember.value = {
     head_id: selectedHead.value.head_id,
     barangay: selectedHead.value.barangay || '',
-    purok: selectedHead.value.purok || '',
     lastname: '',
     firstname: '',
     middlename: '',
