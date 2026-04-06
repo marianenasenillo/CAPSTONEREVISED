@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { supabase } from '@/utils/supabase'
+import { supabase, authReady } from '@/utils/supabase'
 
 import LoginView from '@/views/LoginView.vue'
 import AdminRegister from '@/views/AdminRegister.vue'
@@ -108,6 +108,10 @@ const router = createRouter({
 
 // Navigation Guard
 router.beforeEach(async (to, from, next) => {
+  // Wait for Supabase to finish restoring the session from localStorage
+  // before checking auth state — prevents false logout on page refresh
+  await authReady
+
   const { data: { session } } = await supabase.auth.getSession()
 
   const isPublicRoute = to.matched.some(r => r.meta.public)
